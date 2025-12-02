@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user_id
@@ -6,7 +7,10 @@ from app.agents.interactive import InteractiveAgent
 from app.agents.profile_evaluation import ProfileEvaluationAgent
 from app.agents.url_processing import UrlProcessingAgent
 from app.services.profile_evaluation import ProfileEvaluator
+from app.models import Member
 from pydantic import BaseModel
+from typing import Optional, List
+import uuid
 
 router = APIRouter()
 
@@ -66,3 +70,150 @@ async def add_social_link(
     # background_tasks.add_task(agent.process_url, social_link.id)
 
     return {"status": "processing", "message": "Link added and processing started"}
+
+
+# Member endpoints
+class MemberSummary(BaseModel):
+    id: int
+    profile_id: str
+    first_name: Optional[str]
+    last_name: Optional[str]
+    email: str
+    membership_status: str
+    location: Optional[str]
+    role: Optional[str]
+    skills_count: int
+    interests_count: int
+
+    class Config:
+        from_attributes = True
+
+
+class MemberDetail(BaseModel):
+    id: int
+    profile_id: str
+    clerk_user_id: str
+    email: str
+    first_name: Optional[str]
+    last_name: Optional[str]
+    bio: Optional[str]
+    company: Optional[str]
+    role: Optional[str]
+    website: Optional[str]
+    location: Optional[str]
+    membership_status: str
+    is_public: bool
+    urls: List[str]
+    roles: List[str]
+    prompt_responses: List[str]
+    skills: List[str]
+    interests: List[str]
+    all_traits: List[str]
+
+    class Config:
+        from_attributes = True
+
+
+class MembersListResponse(BaseModel):
+    members: List[MemberSummary]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+
+
+@router.get("/members", response_model=MembersListResponse)
+async def list_members(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    search: Optional[str] = None,
+    membership_status: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """List all members with pagination and optional filtering."""
+    query = select(Member)
+
+    # Always exclude cancelled and expired members
+    query = query.where(Member.membership_status.notin_(['cancelled', 'expired']))
+
+    # Apply filters
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.where(
+            (Member.first_name.ilike(search_pattern)) |
+            (Member.last_name.ilike(search_pattern)) |
+            (Member.email.ilike(search_pattern)) |
+            (Member.bio.ilike(search_pattern))
+        )
+
+    if membership_status:
+        query = query.where(Member.membership_status == membership_status)
+
+    # Get total count
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
+
+    # Apply pagination
+    query = query.order_by(Member.last_name.asc().nulls_last(), Member.first_name.asc().nulls_last())
+    query = query.offset((page - 1) * per_page).limit(per_page)
+
+    result = await db.execute(query)
+    members = result.scalars().all()
+
+    return MembersListResponse(
+        members=[
+            MemberSummary(
+                id=m.id,
+                profile_id=str(m.profile_id),
+                first_name=m.first_name,
+                last_name=m.last_name,
+                email=m.email,
+                membership_status=m.membership_status,
+                location=m.location,
+                role=m.role,
+                skills_count=len(m.skills) if m.skills else 0,
+                interests_count=len(m.interests) if m.interests else 0,
+            )
+            for m in members
+        ],
+        total=total,
+        page=page,
+        per_page=per_page,
+        total_pages=(total + per_page - 1) // per_page if total > 0 else 1,
+    )
+
+
+@router.get("/members/{member_id}", response_model=MemberDetail)
+async def get_member(
+    member_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get a single member by ID."""
+    result = await db.execute(select(Member).where(Member.id == member_id))
+    member = result.scalar_one_or_none()
+
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    return MemberDetail(
+        id=member.id,
+        profile_id=str(member.profile_id),
+        clerk_user_id=member.clerk_user_id,
+        email=member.email,
+        first_name=member.first_name,
+        last_name=member.last_name,
+        bio=member.bio,
+        company=member.company,
+        role=member.role,
+        website=member.website,
+        location=member.location,
+        membership_status=member.membership_status,
+        is_public=member.is_public,
+        urls=member.urls or [],
+        roles=member.roles or [],
+        prompt_responses=member.prompt_responses or [],
+        skills=member.skills or [],
+        interests=member.interests or [],
+        all_traits=member.all_traits or [],
+    )
