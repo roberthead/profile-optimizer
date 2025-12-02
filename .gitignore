@@ -3,5 +3,6 @@
 */*.pyc
 
 # Backend
+backend/data/seeds/*.json
 
 # Frontend
