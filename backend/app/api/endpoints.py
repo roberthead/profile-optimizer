@@ -5,6 +5,7 @@ from app.core.security import get_current_user_id
 from app.agents.interactive import InteractiveAgent
 from app.agents.profile_evaluation import ProfileEvaluationAgent
 from app.agents.url_processing import UrlProcessingAgent
+from app.services.profile_evaluation import ProfileEvaluator
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -36,13 +37,15 @@ async def chat(
 
 @router.post("/profile/evaluate")
 async def evaluate_profile(
-    current_user_id: str = Depends(get_current_user_id),
+    member_id: int = 1,  # TODO: Get from auth when ready
     db: AsyncSession = Depends(get_db)
 ):
-    member_id = 1 # TODO: Resolve
-    agent = ProfileEvaluationAgent(db)
-    result = await agent.evaluate_profile(member_id)
-    return result
+    try:
+        evaluator = ProfileEvaluator(db)
+        result = await evaluator.evaluate_member(member_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 @router.post("/social-links")
 async def add_social_link(
