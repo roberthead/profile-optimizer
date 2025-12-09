@@ -40,7 +40,7 @@ class ProfileEvaluationAgent:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        self.model = "claude-sonnet-4-20250514"
+        self.model = "claude-opus-4-20250514"
 
     async def evaluate_profile(self, member_id: int) -> dict[str, Any]:
         """
