@@ -6,9 +6,10 @@ from app.core.security import get_current_user_id
 from app.agents.interactive import InteractiveAgent
 from app.agents.profile_evaluation import ProfileEvaluationAgent
 from app.agents.url_processing import UrlProcessingAgent
-from app.models import Member
+from app.models import Member, ProfileCompleteness
 from pydantic import BaseModel
 from typing import Optional, List
+from datetime import datetime, timedelta, timezone
 import uuid
 
 router = APIRouter()
@@ -53,6 +54,25 @@ async def evaluate_profile(
             if member_id is None:
                 raise HTTPException(status_code=404, detail="No members found")
 
+        # Check for existing recent evaluation
+        one_week_ago = datetime.now(timezone.utc) - timedelta(weeks=1)
+        result = await db.execute(
+            select(ProfileCompleteness).where(ProfileCompleteness.member_id == member_id)
+        )
+        existing = result.scalar_one_or_none()
+
+        # Use cached result if it exists and is less than a week old
+        if existing and existing.last_calculated and existing.last_calculated >= one_week_ago:
+            missing_fields = existing.missing_fields or {}
+            return {
+                "completeness_score": existing.completeness_score,
+                "missing_fields": missing_fields.get("required", []),
+                "optional_missing": missing_fields.get("optional", []),
+                "assessment": existing.assessment or "",
+                "last_calculated": existing.last_calculated.isoformat() if existing.last_calculated else None,
+            }
+
+        # Otherwise, run the agent to generate a fresh evaluation
         agent = ProfileEvaluationAgent(db)
         result = await agent.evaluate_profile(member_id)
 

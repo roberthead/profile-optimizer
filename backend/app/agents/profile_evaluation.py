@@ -154,18 +154,19 @@ First, use the get_field_completeness tool to check the current state of their p
         missing_fields_data = {
             "required": [f for f in evaluation["empty_fields"] if f in ["First Name", "Last Name", "Email"]],
             "optional": [f for f in evaluation["empty_fields"] if f not in ["First Name", "Last Name", "Email"]],
-            "assessment": evaluation["assessment"],
         }
 
         if profile_completeness:
             profile_completeness.completeness_score = evaluation["completeness_score"]
             profile_completeness.missing_fields = missing_fields_data
+            profile_completeness.assessment = evaluation["assessment"]
             profile_completeness.last_calculated = datetime.utcnow()
         else:
             profile_completeness = ProfileCompleteness(
                 member_id=member_id,
                 completeness_score=evaluation["completeness_score"],
                 missing_fields=missing_fields_data,
+                assessment=evaluation["assessment"],
                 last_calculated=datetime.utcnow()
             )
             self.db.add(profile_completeness)
