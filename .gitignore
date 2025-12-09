@@ -1,6 +1,6 @@
 .env
 */.env
-*/*.pyc
+**/*.pyc
 .claude/settings.local.json
 
 # Backend
