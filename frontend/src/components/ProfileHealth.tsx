@@ -61,7 +61,7 @@ export const ProfileHealth: React.FC<ProfileHealthProps> = ({ memberId }) => {
 
   if (!data) return null;
 
-  const { completeness_score, missing_fields, optional_missing, assessment } = data;
+  const { completeness_score, assessment } = data;
 
   // Determine color based on score
   const getScoreColor = (score: number) => {

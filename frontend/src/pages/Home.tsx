@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ProfileHealth } from '../components/ProfileHealth';
+import { ProfileChat } from '../components/ProfileChat';
 
 interface MemberOption {
   id: number;
@@ -50,18 +51,21 @@ export const Home: React.FC = () => {
     }
   }, [sortedMembers, selectedMemberId]);
 
+  const selectedMember = sortedMembers.find(m => m.id === selectedMemberId);
+  const selectedMemberName = selectedMember ? getMemberDisplayName(selectedMember) : '';
+
   return (
-    <div className="space-y-8">
-      <div className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-2xl shadow-lg p-8 text-center">
-        <h1 className="text-3xl font-bold mb-3">
-          Welcome to Profile Optimizer
+    <div className="space-y-6">
+      <div className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-2xl shadow-lg p-6 text-center">
+        <h1 className="text-2xl font-bold mb-2">
+          Profile Optimizer
         </h1>
-        <p className="text-lg text-indigo-100">
-          Your AI-powered assistant for enriching White Rabbit Ashland member profiles.
+        <p className="text-indigo-100">
+          AI-powered profile enrichment for White Rabbit Ashland members
         </p>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4">
         <label htmlFor="member-select" className="block text-sm font-medium text-gray-700 mb-2">
           Select a Member
         </label>
@@ -83,7 +87,16 @@ export const Home: React.FC = () => {
         )}
       </div>
 
-      {selectedMemberId && <ProfileHealth memberId={selectedMemberId} />}
+      {selectedMemberId && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div>
+            <ProfileHealth memberId={selectedMemberId} />
+          </div>
+          <div>
+            <ProfileChat memberId={selectedMemberId} memberName={selectedMemberName} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

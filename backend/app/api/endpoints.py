@@ -5,6 +5,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user_id
 from app.agents.interactive import InteractiveAgent
 from app.agents.profile_evaluation import ProfileEvaluationAgent
+from app.agents.profile_chat import ProfileChatAgent
 from app.agents.url_processing import UrlProcessingAgent
 from app.models import Member, ProfileCompleteness
 from pydantic import BaseModel
@@ -16,10 +17,13 @@ router = APIRouter()
 
 class ChatRequest(BaseModel):
     message: str
-    session_id: str
+    session_id: Optional[str] = None
+    member_id: int
 
 class ChatResponse(BaseModel):
     response: str
+    session_id: str
+    suggestions_made: List[dict] = []
 
 class SocialLinkRequest(BaseModel):
     url: str
@@ -28,16 +32,23 @@ class SocialLinkRequest(BaseModel):
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
-    current_user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db)
 ):
-    # TODO: Resolve internal member_id from Clerk ID
-    # For now, we'll just pass 1 as a dummy member_id if not found
-    member_id = 1
-
-    agent = InteractiveAgent(db)
-    response = await agent.chat(member_id, request.message, request.session_id)
-    return ChatResponse(response=response)
+    """Chat with the profile optimization agent."""
+    try:
+        agent = ProfileChatAgent(db)
+        result = await agent.chat(
+            member_id=request.member_id,
+            message=request.message,
+            session_id=request.session_id
+        )
+        return ChatResponse(
+            response=result["response"],
+            session_id=result["session_id"],
+            suggestions_made=result.get("suggestions_made", [])
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 @router.post("/profile/evaluate")
 async def evaluate_profile(

@@ -80,3 +80,24 @@ class ProfileCompleteness(Base):
     last_calculated: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     member: Mapped["Member"] = relationship(back_populates="profile_completeness")
+
+
+class ProfileSuggestion(Base):
+    __tablename__ = "profile_suggestions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
+    session_id: Mapped[str] = mapped_column(String, index=True)
+    field_name: Mapped[str] = mapped_column(String)  # e.g., "bio", "role", "skills"
+    current_value: Mapped[Optional[str]] = mapped_column(Text)
+    suggested_value: Mapped[str] = mapped_column(Text)
+    reasoning: Mapped[Optional[str]] = mapped_column(Text)  # Why this suggestion was made
+    status: Mapped[str] = mapped_column(String, default="pending")  # pending, accepted, rejected, edited
+    accepted_value: Mapped[Optional[str]] = mapped_column(Text)  # What was actually published (if edited)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    member: Mapped["Member"] = relationship(back_populates="profile_suggestions")
+
+
+Member.profile_suggestions = relationship("ProfileSuggestion", back_populates="member", cascade="all, delete-orphan")

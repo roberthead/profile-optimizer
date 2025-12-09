@@ -110,3 +110,28 @@ FIELD_COMPLETENESS_TOOL = {
         "required": ["member_id"]
     }
 }
+
+
+SAVE_PROFILE_SUGGESTION_TOOL = {
+    "name": "save_profile_suggestion",
+    "description": "Save a suggested improvement to a member's profile field. Use this when you have gathered enough information from the conversation to suggest a specific value for a profile field. The suggestion will be saved for the member to review and approve before publishing.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "field_name": {
+                "type": "string",
+                "description": "The profile field to suggest a value for. Valid fields: bio, role, location, company, website, skills, interests",
+                "enum": ["bio", "role", "location", "company", "website", "skills", "interests"]
+            },
+            "suggested_value": {
+                "type": "string",
+                "description": "The suggested value for this field. For skills/interests, provide a comma-separated list."
+            },
+            "reasoning": {
+                "type": "string",
+                "description": "Brief explanation of why this suggestion was made, based on the conversation."
+            }
+        },
+        "required": ["field_name", "suggested_value", "reasoning"]
+    }
+}
