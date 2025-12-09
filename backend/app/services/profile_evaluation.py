@@ -19,8 +19,8 @@ class ProfileEvaluator:
 
     OPTIONAL_FIELDS = {
         "profile_photo_url": "Profile Photo",
-        "what_you_do": "What You Do",
-        "where_location": "Location",
+        "role": "Role",
+        "location": "Location",
         "website": "Website",
     }
 

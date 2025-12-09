@@ -1,16 +1,22 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 interface ProfileHealthData {
   completeness_score: number;
   missing_fields: string[];
   optional_missing: string[];
-  last_calculated: string;
+  assessment: string;
+  last_calculated: string | null;
 }
 
-async function fetchProfileHealth(): Promise<ProfileHealthData> {
-  const response = await fetch('http://localhost:8000/api/v1/profile/evaluate', {
+interface ProfileHealthProps {
+  memberId: number;
+}
+
+async function fetchProfileHealth(memberId: number): Promise<ProfileHealthData> {
+  const response = await fetch(`http://localhost:8000/api/v1/profile/evaluate?member_id=${memberId}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -24,10 +30,10 @@ async function fetchProfileHealth(): Promise<ProfileHealthData> {
   return response.json();
 }
 
-export const ProfileHealth: React.FC = () => {
+export const ProfileHealth: React.FC<ProfileHealthProps> = ({ memberId }) => {
   const { data, isLoading, error } = useQuery({
-    queryKey: ['profileHealth'],
-    queryFn: fetchProfileHealth,
+    queryKey: ['profileHealth', memberId],
+    queryFn: () => fetchProfileHealth(memberId),
   });
 
   if (isLoading) {
@@ -55,7 +61,7 @@ export const ProfileHealth: React.FC = () => {
 
   if (!data) return null;
 
-  const { completeness_score, missing_fields, optional_missing } = data;
+  const { completeness_score, missing_fields, optional_missing, assessment } = data;
 
   // Determine color based on score
   const getScoreColor = (score: number) => {
@@ -70,7 +76,6 @@ export const ProfileHealth: React.FC = () => {
     return 'bg-red-500';
   };
 
-  const allMissingFields = [...missing_fields, ...optional_missing];
   const isComplete = completeness_score === 100;
 
   return (
@@ -107,45 +112,22 @@ export const ProfileHealth: React.FC = () => {
         </div>
       )}
 
-      {/* Missing Fields */}
-      {!isComplete && allMissingFields.length > 0 && (
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-3">Missing Information</h3>
-          <div className="space-y-2">
-            {missing_fields.length > 0 && (
-              <div>
-                <p className="text-sm font-medium text-gray-700 mb-1">Required:</p>
-                <ul className="space-y-1">
-                  {missing_fields.map((field) => (
-                    <li
-                      key={field}
-                      className="flex items-center gap-2 text-sm text-gray-600 pl-4"
-                    >
-                      <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
-                      {field}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {optional_missing.length > 0 && (
-              <div className="mt-3">
-                <p className="text-sm font-medium text-gray-700 mb-1">Optional:</p>
-                <ul className="space-y-1">
-                  {optional_missing.map((field) => (
-                    <li
-                      key={field}
-                      className="flex items-center gap-2 text-sm text-gray-600 pl-4"
-                    >
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
-                      {field}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
+      {/* AI Assessment */}
+      {assessment && (
+        <div className="prose prose-sm max-w-none">
+          <ReactMarkdown
+            components={{
+              h2: ({ children }) => <h2 className="text-lg font-semibold text-gray-900 mt-4 mb-2">{children}</h2>,
+              h3: ({ children }) => <h3 className="text-md font-medium text-gray-800 mt-3 mb-1">{children}</h3>,
+              p: ({ children }) => <p className="text-gray-600 mb-2">{children}</p>,
+              ul: ({ children }) => <ul className="list-disc pl-5 space-y-1 text-gray-600">{children}</ul>,
+              ol: ({ children }) => <ol className="list-decimal pl-5 space-y-1 text-gray-600">{children}</ol>,
+              li: ({ children }) => <li className="text-sm">{children}</li>,
+              strong: ({ children }) => <strong className="font-semibold text-gray-800">{children}</strong>,
+            }}
+          >
+            {assessment}
+          </ReactMarkdown>
         </div>
       )}
     </div>

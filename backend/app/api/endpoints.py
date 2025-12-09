@@ -6,7 +6,6 @@ from app.core.security import get_current_user_id
 from app.agents.interactive import InteractiveAgent
 from app.agents.profile_evaluation import ProfileEvaluationAgent
 from app.agents.url_processing import UrlProcessingAgent
-from app.services.profile_evaluation import ProfileEvaluator
 from app.models import Member
 from pydantic import BaseModel
 from typing import Optional, List
@@ -41,13 +40,30 @@ async def chat(
 
 @router.post("/profile/evaluate")
 async def evaluate_profile(
-    member_id: int = 1,  # TODO: Get from auth when ready
+    member_id: Optional[int] = None,  # TODO: Get from auth when ready
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        evaluator = ProfileEvaluator(db)
-        result = await evaluator.evaluate_member(member_id)
-        return result
+        # If no member_id provided, get the first available member
+        if member_id is None:
+            result = await db.execute(
+                select(Member.id).order_by(Member.id).limit(1)
+            )
+            member_id = result.scalar_one_or_none()
+            if member_id is None:
+                raise HTTPException(status_code=404, detail="No members found")
+
+        agent = ProfileEvaluationAgent(db)
+        result = await agent.evaluate_profile(member_id)
+
+        # Return in the format expected by the frontend
+        return {
+            "completeness_score": result["completeness_score"],
+            "missing_fields": [f for f in result["empty_fields"] if f in ["First Name", "Last Name", "Email"]],
+            "optional_missing": [f for f in result["empty_fields"] if f not in ["First Name", "Last Name", "Email"]],
+            "assessment": result.get("assessment", ""),
+            "last_calculated": result.get("last_calculated", None),
+        }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
