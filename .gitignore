@@ -1,6 +1,7 @@
 .env
 */.env
 */*.pyc
+.claude/settings.local.json
 
 # Backend
 backend/data/seeds/*.json
