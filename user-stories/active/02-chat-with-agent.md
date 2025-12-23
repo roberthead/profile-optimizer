@@ -33,7 +33,7 @@ Members should be able to have a natural conversation with the Profile Optimizer
 ### Given a member wants to end the conversation
 - [x] When they close the chat or navigate away
 - [x] Then their conversation history is saved
-- [ ] And they can resume the conversation later (if session management exists)
+- [x] And they can resume the conversation later (if session management exists)
 
 ## Technical Notes
 

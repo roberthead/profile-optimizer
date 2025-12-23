@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Send, Bot, User, Lightbulb } from 'lucide-react';
+import { Send, Bot, User, Lightbulb, RotateCcw } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 interface Message {
@@ -21,10 +21,17 @@ interface ChatResponse {
   suggestions_made: Suggestion[];
 }
 
+interface ChatHistoryResponse {
+  messages: Message[];
+  session_id: string;
+}
+
 interface ProfileChatProps {
   memberId: number;
   memberName: string;
 }
+
+const getSessionKey = (memberId: number) => `profile-chat-session-${memberId}`;
 
 async function sendMessage(memberId: number, message: string, sessionId: string | null): Promise<ChatResponse> {
   const response = await fetch('http://localhost:8000/api/v1/chat', {
@@ -46,11 +53,27 @@ async function sendMessage(memberId: number, message: string, sessionId: string 
   return response.json();
 }
 
+async function fetchChatHistory(memberId: number, sessionId: string): Promise<ChatHistoryResponse> {
+  const response = await fetch(
+    `http://localhost:8000/api/v1/chat/history?member_id=${memberId}&session_id=${sessionId}`
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch chat history');
+  }
+
+  return response.json();
+}
+
 export const ProfileChat: React.FC<ProfileChatProps> = ({ memberId, memberName }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(() => {
+    // Initialize from localStorage
+    return localStorage.getItem(getSessionKey(memberId));
+  });
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [isRestoringSession, setIsRestoringSession] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -61,12 +84,50 @@ export const ProfileChat: React.FC<ProfileChatProps> = ({ memberId, memberName }
     scrollToBottom();
   }, [messages]);
 
-  // Reset chat when member changes
+  // Load session from localStorage when member changes
   useEffect(() => {
-    setMessages([]);
-    setSessionId(null);
-    setSuggestions([]);
+    const savedSessionId = localStorage.getItem(getSessionKey(memberId));
+    if (savedSessionId) {
+      setSessionId(savedSessionId);
+      setIsRestoringSession(true);
+    } else {
+      setSessionId(null);
+      setMessages([]);
+      setSuggestions([]);
+    }
   }, [memberId]);
+
+  // Fetch conversation history when we have a session to restore
+  useEffect(() => {
+    if (isRestoringSession && sessionId) {
+      fetchChatHistory(memberId, sessionId)
+        .then((data) => {
+          setMessages(data.messages);
+          setIsRestoringSession(false);
+        })
+        .catch(() => {
+          // Session might be invalid, clear it
+          localStorage.removeItem(getSessionKey(memberId));
+          setSessionId(null);
+          setMessages([]);
+          setIsRestoringSession(false);
+        });
+    }
+  }, [isRestoringSession, sessionId, memberId]);
+
+  // Save session_id to localStorage when it changes
+  useEffect(() => {
+    if (sessionId) {
+      localStorage.setItem(getSessionKey(memberId), sessionId);
+    }
+  }, [sessionId, memberId]);
+
+  const handleNewChat = () => {
+    localStorage.removeItem(getSessionKey(memberId));
+    setSessionId(null);
+    setMessages([]);
+    setSuggestions([]);
+  };
 
   const chatMutation = useMutation({
     mutationFn: ({ message }: { message: string }) => sendMessage(memberId, message, sessionId),
@@ -98,14 +159,31 @@ export const ProfileChat: React.FC<ProfileChatProps> = ({ memberId, memberName }
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col h-[600px]">
       {/* Header */}
-      <div className="p-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-900">Profile Assistant</h2>
-        <p className="text-sm text-gray-600">Chat to improve your profile for {memberName}</p>
+      <div className="p-4 border-b border-gray-200 flex justify-between items-start">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Profile Assistant</h2>
+          <p className="text-sm text-gray-600">Chat to improve your profile for {memberName}</p>
+        </div>
+        {messages.length > 0 && (
+          <button
+            onClick={handleNewChat}
+            className="flex items-center gap-1 px-2 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+            title="Start new conversation"
+          >
+            <RotateCcw className="w-4 h-4" />
+            New
+          </button>
+        )}
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 ? (
+        {isRestoringSession ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <Bot className="w-12 h-12 text-indigo-400 mb-4 animate-pulse" />
+            <p className="text-gray-600">Restoring conversation...</p>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <Bot className="w-12 h-12 text-indigo-400 mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">Start a conversation</h3>

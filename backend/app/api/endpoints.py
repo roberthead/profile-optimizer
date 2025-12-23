@@ -7,7 +7,7 @@ from app.agents.interactive import InteractiveAgent
 from app.agents.profile_evaluation import ProfileEvaluationAgent
 from app.agents.profile_chat import ProfileChatAgent
 from app.agents.url_processing import UrlProcessingAgent
-from app.models import Member, ProfileCompleteness
+from app.models import Member, ProfileCompleteness, ConversationHistory
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
@@ -49,6 +49,67 @@ async def chat(
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatHistoryResponse(BaseModel):
+    messages: List[ChatMessage]
+    session_id: str
+
+
+@router.get("/chat/history")
+async def get_chat_history(
+    member_id: int,
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get conversation history for a member's session."""
+    result = await db.execute(
+        select(ConversationHistory)
+        .where(ConversationHistory.member_id == member_id)
+        .where(ConversationHistory.session_id == session_id)
+        .order_by(ConversationHistory.created_at)
+    )
+    messages = result.scalars().all()
+
+    return ChatHistoryResponse(
+        messages=[
+            ChatMessage(role=msg.role, content=msg.message_content)
+            for msg in messages
+        ],
+        session_id=session_id
+    )
+
+
+@router.get("/chat/sessions")
+async def get_chat_sessions(
+    member_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all session IDs for a member, with the most recent message timestamp."""
+    # Get distinct sessions with their latest message
+    result = await db.execute(
+        select(
+            ConversationHistory.session_id,
+            func.max(ConversationHistory.created_at).label("last_message_at")
+        )
+        .where(ConversationHistory.member_id == member_id)
+        .group_by(ConversationHistory.session_id)
+        .order_by(func.max(ConversationHistory.created_at).desc())
+    )
+    sessions = result.all()
+
+    return {
+        "sessions": [
+            {"session_id": s.session_id, "last_message_at": s.last_message_at.isoformat()}
+            for s in sessions
+        ]
+    }
+
 
 @router.post("/profile/evaluate")
 async def evaluate_profile(
