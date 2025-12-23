@@ -1,0 +1,332 @@
+"""LLM-backed agent for generating insightful question decks."""
+
+import json
+from typing import Any, Optional, List
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+import anthropic
+
+from app.models import Member, QuestionDeck, Question, QuestionCategory
+from app.core.config import settings
+from app.tools.question_tools import (
+    get_community_profile_analysis,
+    get_member_gaps,
+    GET_COMMUNITY_ANALYSIS_TOOL,
+    GET_MEMBER_GAPS_TOOL,
+    SAVE_QUESTION_DECK_TOOL,
+)
+
+
+SYSTEM_PROMPT = """You are a question designer for White Rabbit Ashland - a creative community focused on technology, entrepreneurship, and the arts.
+
+Your job is to generate thoughtful, engaging questions that help surface interesting insights about community members. These questions will be used in gamified profile-building experiences.
+
+## Design Principles
+
+1. **Surface the interesting**: Don't ask about job titles - ask what makes someone light up when they talk about their work.
+
+2. **Enable connection**: Questions should help members discover unexpected commonalities with others.
+
+3. **Respect depth preferences**: Include questions at different depths:
+   - Level 1 (Easy): Quick, fun, approachable
+   - Level 2 (Medium): Thoughtful but not too personal
+   - Level 3 (Deep): Reflective, vulnerable, meaningful
+
+4. **Be specific over generic**: "What's a problem you've been obsessed with solving?" beats "What are you working on?"
+
+5. **Create narrative hooks**: Good questions lead to stories, not just facts.
+
+## Question Categories
+
+- **origin_story**: Where they come from, how they got here
+- **creative_spark**: What inspires them, drives their creativity
+- **collaboration**: How they work with others, what they seek in collaborators
+- **future_vision**: Where they're headed, aspirations
+- **community_connection**: What they bring to/seek from the community
+- **hidden_depths**: Unexpected skills, interests, experiences
+- **impact_legacy**: What they want to create/leave behind
+
+## Output Format
+
+When generating questions, provide:
+- question_text: The actual question
+- category: One of the categories above
+- difficulty_level: 1-3
+- purpose: Why this question is valuable (1 sentence)
+- follow_up_prompts: 1-2 probing follow-ups if the initial answer is brief
+- potential_insights: What you might learn from the answer
+- related_profile_fields: Which profile fields this might help fill (bio, skills, interests, etc.)
+
+## Context Awareness
+
+When given community analysis data, use it to:
+- Identify under-explored areas across profiles
+- Find opportunities for discovering hidden connections
+- Generate questions that fill common gaps
+
+When generating for a specific member, personalize based on their existing profile and gaps."""
+
+
+class QuestionDeckAgent:
+    """LLM-backed agent that generates insightful question decks."""
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+        self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        self.model = "claude-opus-4-5"
+
+    async def generate_global_deck(
+        self,
+        deck_name: str = "Community Discovery Deck",
+        num_questions: int = 20,
+        focus_categories: Optional[List[str]] = None
+    ) -> dict[str, Any]:
+        """
+        Generate a global question deck by analyzing all member profiles.
+
+        Args:
+            deck_name: Name for the generated deck
+            num_questions: Target number of questions to generate
+            focus_categories: Optional list of categories to focus on
+
+        Returns:
+            Dict with deck_id, questions generated, and metadata
+        """
+        # Build the prompt
+        category_guidance = ""
+        if focus_categories:
+            category_guidance = f"\n\nFocus especially on these categories: {', '.join(focus_categories)}"
+
+        user_message = f"""Please generate a question deck for the White Rabbit community.
+
+First, use the get_community_profile_analysis tool to understand the current state of member profiles across the community.
+
+Then, generate approximately {num_questions} insightful questions that:
+1. Help fill common gaps you discover in the analysis
+2. Surface interesting insights about members that aren't captured in standard profile fields
+3. Balance across difficulty levels and categories{category_guidance}
+
+After generating the questions, use save_question_deck to persist them with:
+- Name: "{deck_name}"
+- A description explaining the deck's purpose and what analysis informed it
+- The complete list of questions"""
+
+        return await self._execute_with_tools(user_message)
+
+    async def generate_personalized_deck(
+        self,
+        member_id: int,
+        num_questions: int = 10
+    ) -> dict[str, Any]:
+        """
+        Generate a personalized question deck for a specific member.
+
+        Args:
+            member_id: The member to generate questions for
+            num_questions: Target number of questions
+
+        Returns:
+            Dict with deck_id, questions generated, and metadata
+        """
+        # Get member name for context
+        result = await self.db.execute(select(Member).where(Member.id == member_id))
+        member = result.scalar_one_or_none()
+        if not member:
+            raise ValueError(f"Member with id {member_id} not found")
+
+        member_name = f"{member.first_name or ''} {member.last_name or ''}".strip() or member.email
+
+        user_message = f"""Please generate a personalized question deck for member {member_name} (ID: {member_id}).
+
+First, use get_member_gaps to understand their current profile state and identify opportunities.
+
+Then, generate approximately {num_questions} questions tailored to:
+1. Fill their specific profile gaps
+2. Draw out interesting aspects of who they are
+3. Build on what's already in their profile (use it as context, not repetition)
+
+After generating the questions, use save_question_deck to persist them with:
+- Name: "Personal Discovery - {member_name}"
+- A description explaining what gaps and opportunities this deck addresses
+- The complete list of questions
+- member_id: {member_id}"""
+
+        return await self._execute_with_tools(user_message)
+
+    async def refine_deck(
+        self,
+        deck_id: int,
+        feedback: str
+    ) -> dict[str, Any]:
+        """
+        Refine an existing deck based on feedback.
+
+        Args:
+            deck_id: The deck to refine
+            feedback: User feedback about what to improve
+
+        Returns:
+            Dict with updated deck information
+        """
+        # Get existing deck
+        result = await self.db.execute(
+            select(QuestionDeck).where(QuestionDeck.id == deck_id)
+        )
+        deck = result.scalar_one_or_none()
+        if not deck:
+            raise ValueError(f"Deck with id {deck_id} not found")
+
+        # Get existing questions
+        result = await self.db.execute(
+            select(Question).where(Question.deck_id == deck_id).order_by(Question.order_index)
+        )
+        existing_questions = result.scalars().all()
+
+        questions_json = [
+            {
+                "id": q.id,
+                "question_text": q.question_text,
+                "category": q.category.value,
+                "difficulty_level": q.difficulty_level,
+                "purpose": q.purpose,
+            }
+            for q in existing_questions
+        ]
+
+        member_id_str = f"member_id: {deck.member_id}" if deck.member_id else "null (global deck)"
+
+        user_message = f"""Please help refine the question deck "{deck.name}".
+
+Current questions in the deck:
+{json.dumps(questions_json, indent=2)}
+
+Feedback to address:
+{feedback}
+
+Based on this feedback:
+1. Analyze what changes would improve the deck
+2. Generate a revised deck that addresses the feedback
+3. Save the updated deck (this will create a new version)
+
+Use save_question_deck to save the refined deck with:
+- Same name but updated description mentioning the refinement
+- The revised questions
+- {member_id_str}"""
+
+        return await self._execute_with_tools(user_message)
+
+    async def _execute_with_tools(self, user_message: str) -> dict[str, Any]:
+        """Execute a conversation with tool use."""
+        tools = [GET_COMMUNITY_ANALYSIS_TOOL, GET_MEMBER_GAPS_TOOL, SAVE_QUESTION_DECK_TOOL]
+        messages = [{"role": "user", "content": user_message}]
+
+        result = {
+            "success": False,
+            "deck_id": None,
+            "questions_generated": 0,
+            "analysis_context": None,
+            "response_text": "",
+        }
+
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=4096,
+            system=SYSTEM_PROMPT,
+            tools=tools,
+            messages=messages,
+        )
+
+        # Handle tool use in a loop
+        while response.stop_reason == "tool_use":
+            tool_results = []
+
+            for block in response.content:
+                if block.type == "tool_use":
+                    tool_result = await self._execute_tool(block.name, block.input, result)
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(tool_result),
+                    })
+
+            # Continue conversation with tool results
+            messages.append({"role": "assistant", "content": response.content})
+            messages.append({"role": "user", "content": tool_results})
+
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=4096,
+                system=SYSTEM_PROMPT,
+                tools=tools,
+                messages=messages,
+            )
+
+        # Extract final response text
+        for block in response.content:
+            if hasattr(block, "text"):
+                result["response_text"] = block.text
+                break
+
+        return result
+
+    async def _execute_tool(
+        self,
+        tool_name: str,
+        tool_input: dict,
+        result: dict
+    ) -> dict:
+        """Execute a tool and return the result."""
+
+        if tool_name == "get_community_profile_analysis":
+            analysis = await get_community_profile_analysis(self.db)
+            result["analysis_context"] = analysis
+            return analysis
+
+        elif tool_name == "get_member_gaps":
+            member_id = tool_input.get("member_id")
+            gaps = await get_member_gaps(self.db, member_id)
+            return gaps
+
+        elif tool_name == "save_question_deck":
+            deck = await self._save_deck(tool_input)
+            result["success"] = True
+            result["deck_id"] = deck.id
+            result["questions_generated"] = len(tool_input.get("questions", []))
+            return {
+                "success": True,
+                "deck_id": deck.id,
+                "message": f"Saved deck with {result['questions_generated']} questions"
+            }
+
+        return {"error": f"Unknown tool: {tool_name}"}
+
+    async def _save_deck(self, tool_input: dict) -> QuestionDeck:
+        """Save a question deck to the database."""
+        deck = QuestionDeck(
+            name=tool_input["name"],
+            description=tool_input.get("description", ""),
+            member_id=tool_input.get("member_id"),
+            generation_context=tool_input.get("generation_context"),
+        )
+        self.db.add(deck)
+        await self.db.flush()  # Get the deck ID
+
+        questions = tool_input.get("questions", [])
+        for idx, q in enumerate(questions):
+            question = Question(
+                deck_id=deck.id,
+                question_text=q["question_text"],
+                category=QuestionCategory(q["category"]),
+                difficulty_level=q.get("difficulty_level", 1),
+                estimated_time_minutes=q.get("estimated_time_minutes", 2),
+                purpose=q["purpose"],
+                follow_up_prompts=q.get("follow_up_prompts", []),
+                potential_insights=q.get("potential_insights", []),
+                related_profile_fields=q.get("related_profile_fields", []),
+                order_index=idx,
+            )
+            self.db.add(question)
+
+        await self.db.commit()
+        await self.db.refresh(deck)
+        return deck

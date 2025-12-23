@@ -7,7 +7,8 @@ from app.agents.interactive import InteractiveAgent
 from app.agents.profile_evaluation import ProfileEvaluationAgent
 from app.agents.profile_chat import ProfileChatAgent
 from app.agents.url_processing import UrlProcessingAgent
-from app.models import Member, ProfileCompleteness, ConversationHistory
+from app.agents.question_deck import QuestionDeckAgent
+from app.models import Member, ProfileCompleteness, ConversationHistory, QuestionDeck, Question
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
@@ -324,4 +325,216 @@ async def get_member(
         skills=member.skills or [],
         interests=member.interests or [],
         all_traits=member.all_traits or [],
+    )
+
+
+# Question Deck endpoints
+class GenerateGlobalDeckRequest(BaseModel):
+    deck_name: str = "Community Discovery Deck"
+    num_questions: int = 20
+    focus_categories: Optional[List[str]] = None
+
+
+class GeneratePersonalDeckRequest(BaseModel):
+    member_id: int
+    num_questions: int = 10
+
+
+class RefineDeckRequest(BaseModel):
+    deck_id: int
+    feedback: str
+
+
+class QuestionModel(BaseModel):
+    id: int
+    question_text: str
+    category: str
+    difficulty_level: int
+    purpose: str
+    follow_up_prompts: List[str]
+    potential_insights: List[str]
+    related_profile_fields: List[str]
+
+    class Config:
+        from_attributes = True
+
+
+class QuestionDeckModel(BaseModel):
+    id: int
+    deck_id: str
+    name: str
+    description: Optional[str]
+    member_id: Optional[int]
+    is_active: bool
+    version: int
+    questions: List[QuestionModel]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DeckGenerationResponse(BaseModel):
+    success: bool
+    deck_id: Optional[int]
+    questions_generated: int
+    response_text: str
+
+
+@router.post("/questions/deck/generate-global", response_model=DeckGenerationResponse)
+async def generate_global_deck(
+    request: GenerateGlobalDeckRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Generate a global question deck by analyzing all member profiles."""
+    agent = QuestionDeckAgent(db)
+    result = await agent.generate_global_deck(
+        deck_name=request.deck_name,
+        num_questions=request.num_questions,
+        focus_categories=request.focus_categories
+    )
+    return DeckGenerationResponse(**result)
+
+
+@router.post("/questions/deck/generate-personal", response_model=DeckGenerationResponse)
+async def generate_personal_deck(
+    request: GeneratePersonalDeckRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Generate a personalized question deck for a specific member."""
+    try:
+        agent = QuestionDeckAgent(db)
+        result = await agent.generate_personalized_deck(
+            member_id=request.member_id,
+            num_questions=request.num_questions
+        )
+        return DeckGenerationResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/questions/deck/refine", response_model=DeckGenerationResponse)
+async def refine_deck(
+    request: RefineDeckRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Refine an existing question deck based on feedback."""
+    try:
+        agent = QuestionDeckAgent(db)
+        result = await agent.refine_deck(
+            deck_id=request.deck_id,
+            feedback=request.feedback
+        )
+        return DeckGenerationResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/questions/decks", response_model=List[QuestionDeckModel])
+async def list_decks(
+    member_id: Optional[int] = None,
+    include_global: bool = True,
+    db: AsyncSession = Depends(get_db)
+):
+    """List question decks, optionally filtered by member."""
+    query = select(QuestionDeck).where(QuestionDeck.is_active == True)
+
+    if member_id is not None:
+        if include_global:
+            query = query.where(
+                (QuestionDeck.member_id == member_id) |
+                (QuestionDeck.member_id.is_(None))
+            )
+        else:
+            query = query.where(QuestionDeck.member_id == member_id)
+    elif not include_global:
+        query = query.where(QuestionDeck.member_id.isnot(None))
+
+    query = query.order_by(QuestionDeck.created_at.desc())
+
+    result = await db.execute(query)
+    decks = result.scalars().all()
+
+    # Load questions for each deck
+    response_decks = []
+    for deck in decks:
+        questions_result = await db.execute(
+            select(Question)
+            .where(Question.deck_id == deck.id)
+            .where(Question.is_active == True)
+            .order_by(Question.order_index)
+        )
+        questions = questions_result.scalars().all()
+
+        response_decks.append(QuestionDeckModel(
+            id=deck.id,
+            deck_id=str(deck.deck_id),
+            name=deck.name,
+            description=deck.description,
+            member_id=deck.member_id,
+            is_active=deck.is_active,
+            version=deck.version,
+            questions=[
+                QuestionModel(
+                    id=q.id,
+                    question_text=q.question_text,
+                    category=q.category.value,
+                    difficulty_level=q.difficulty_level,
+                    purpose=q.purpose,
+                    follow_up_prompts=q.follow_up_prompts or [],
+                    potential_insights=q.potential_insights or [],
+                    related_profile_fields=q.related_profile_fields or [],
+                )
+                for q in questions
+            ],
+            created_at=deck.created_at,
+        ))
+
+    return response_decks
+
+
+@router.get("/questions/deck/{deck_id}", response_model=QuestionDeckModel)
+async def get_deck(
+    deck_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get a specific question deck with its questions."""
+    result = await db.execute(
+        select(QuestionDeck).where(QuestionDeck.id == deck_id)
+    )
+    deck = result.scalar_one_or_none()
+
+    if not deck:
+        raise HTTPException(status_code=404, detail="Deck not found")
+
+    questions_result = await db.execute(
+        select(Question)
+        .where(Question.deck_id == deck.id)
+        .where(Question.is_active == True)
+        .order_by(Question.order_index)
+    )
+    questions = questions_result.scalars().all()
+
+    return QuestionDeckModel(
+        id=deck.id,
+        deck_id=str(deck.deck_id),
+        name=deck.name,
+        description=deck.description,
+        member_id=deck.member_id,
+        is_active=deck.is_active,
+        version=deck.version,
+        questions=[
+            QuestionModel(
+                id=q.id,
+                question_text=q.question_text,
+                category=q.category.value,
+                difficulty_level=q.difficulty_level,
+                purpose=q.purpose,
+                follow_up_prompts=q.follow_up_prompts or [],
+                potential_insights=q.potential_insights or [],
+                related_profile_fields=q.related_profile_fields or [],
+            )
+            for q in questions
+        ],
+        created_at=deck.created_at,
     )
