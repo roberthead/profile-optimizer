@@ -61,7 +61,7 @@ export const ProfileHealth: React.FC<ProfileHealthProps> = ({ memberId }) => {
 
   if (!data) return null;
 
-  const { completeness_score, assessment } = data;
+  const { completeness_score, missing_fields, optional_missing, assessment } = data;
 
   // Determine color based on score
   const getScoreColor = (score: number) => {
@@ -100,6 +100,47 @@ export const ProfileHealth: React.FC<ProfileHealthProps> = ({ memberId }) => {
           ></div>
         </div>
       </div>
+
+      {/* Missing Fields */}
+      {(missing_fields.length > 0 || optional_missing.length > 0) && (
+        <div className="mb-6 space-y-4">
+          {missing_fields.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium text-red-700 mb-2 flex items-center gap-1">
+                <AlertCircle className="w-4 h-4" />
+                Required fields missing
+              </h3>
+              <ul className="space-y-1">
+                {missing_fields.map((field) => (
+                  <li
+                    key={field}
+                    className="text-sm text-red-600 bg-red-50 px-3 py-1.5 rounded-md border border-red-200"
+                  >
+                    {field}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {optional_missing.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium text-amber-700 mb-2">
+                Optional fields to consider
+              </h3>
+              <ul className="flex flex-wrap gap-2">
+                {optional_missing.map((field) => (
+                  <li
+                    key={field}
+                    className="text-sm text-amber-700 bg-amber-50 px-3 py-1.5 rounded-md border border-amber-200"
+                  >
+                    {field}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Complete State */}
       {isComplete && (
