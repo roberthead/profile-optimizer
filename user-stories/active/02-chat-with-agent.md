@@ -13,26 +13,26 @@ Members should be able to have a natural conversation with the Profile Optimizer
 ## Acceptance Criteria
 
 ### Given a member opens the Profile Optimizer chat
-- [ ] When they start a conversation
-- [ ] Then the agent greets them warmly
-- [ ] And the agent references their current profile completeness score
-- [ ] And the agent asks if they'd like help with specific missing fields
+- [x] When they start a conversation
+- [x] Then the agent greets them warmly
+- [x] And the agent references their current profile completeness score
+- [x] And the agent asks if they'd like help with specific missing fields
 
 ### Given a member is chatting with the agent
-- [ ] When they send a message
-- [ ] Then they receive a contextual response within 3 seconds
-- [ ] And the conversation history is preserved during the session
-- [ ] And the agent remembers previous context in the conversation
+- [x] When they send a message
+- [x] Then they receive a contextual response within 3 seconds
+- [x] And the conversation history is preserved during the session
+- [x] And the agent remembers previous context in the conversation
 
 ### Given a member provides information in conversation
-- [ ] When they share details about their work, interests, or goals
-- [ ] Then the agent acknowledges and asks clarifying questions
-- [ ] And the conversation stays private (not auto-published to profile)
-- [ ] And the agent can reference this information in future responses
+- [x] When they share details about their work, interests, or goals
+- [x] Then the agent acknowledges and asks clarifying questions
+- [x] And the conversation stays private (not auto-published to profile)
+- [x] And the agent can reference this information in future responses
 
 ### Given a member wants to end the conversation
-- [ ] When they close the chat or navigate away
-- [ ] Then their conversation history is saved
+- [x] When they close the chat or navigate away
+- [x] Then their conversation history is saved
 - [ ] And they can resume the conversation later (if session management exists)
 
 ## Technical Notes
@@ -111,12 +111,12 @@ Member: I have a portfolio at example.com
 
 ## Implementation Order
 
-1. Backend: Chat endpoint with Claude API integration
-2. Backend: Conversation history storage
-3. Backend: Session management
-4. Frontend: Chat UI component
-5. Frontend: Message display and input
-6. Integration: Real-time conversation with context preservation
+1. [x] Backend: Chat endpoint with Claude API integration
+2. [x] Backend: Conversation history storage
+3. [x] Backend: Session management
+4. [x] Frontend: Chat UI component
+5. [x] Frontend: Message display and input
+6. [x] Integration: Real-time conversation with context preservation
 
 ## Out of Scope
 
