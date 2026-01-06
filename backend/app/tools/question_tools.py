@@ -11,7 +11,7 @@ from app.models import Member
 async def get_community_profile_analysis(db: AsyncSession) -> dict[str, Any]:
     """
     Analyze all member profiles to understand community patterns.
-    Returns aggregated insights about what data exists, gaps, and patterns.
+    Returns both aggregated insights AND full member profiles for rich context.
     """
     result = await db.execute(
         select(Member).where(Member.membership_status.notin_(['cancelled', 'expired']))
@@ -38,6 +38,9 @@ async def get_community_profile_analysis(db: AsyncSession) -> dict[str, Any]:
     all_skills = []
     all_interests = []
 
+    # Build full member profiles for context
+    member_profiles = []
+
     for member in members:
         if member.bio and member.bio.strip():
             field_stats["bio"]["filled"] += 1
@@ -60,6 +63,21 @@ async def get_community_profile_analysis(db: AsyncSession) -> dict[str, Any]:
             all_interests.extend(member.interests)
         if member.prompt_responses:
             field_stats["prompt_responses"]["filled"] += 1
+
+        # Add full profile for this member
+        member_name = f"{member.first_name or ''} {member.last_name or ''}".strip()
+        member_profiles.append({
+            "id": member.id,
+            "name": member_name or "Anonymous",
+            "bio": member.bio,
+            "role": member.role,
+            "company": member.company,
+            "location": member.location,
+            "skills": member.skills or [],
+            "interests": member.interests or [],
+            "prompt_responses": member.prompt_responses or {},
+            "all_traits": member.all_traits or [],
+        })
 
     # Calculate averages
     if bio_lengths:
@@ -86,6 +104,7 @@ async def get_community_profile_analysis(db: AsyncSession) -> dict[str, Any]:
         "common_interests": interest_frequency.most_common(20),
         "unique_skills": [s for s, c in skill_frequency.items() if c == 1][:20],
         "unique_interests": [i for i, c in interest_frequency.items() if c == 1][:20],
+        "member_profiles": member_profiles,
     }
 
 
@@ -170,7 +189,12 @@ async def get_member_gaps(db: AsyncSession, member_id: int) -> dict[str, Any]:
 # Tool definitions for Claude API
 GET_COMMUNITY_ANALYSIS_TOOL = {
     "name": "get_community_profile_analysis",
-    "description": "Analyze all member profiles to understand community patterns, common skills/interests, field completion rates, and gaps. Use this to understand what questions would be valuable across the whole community.",
+    "description": """Analyze all member profiles to understand community patterns. Returns:
+- Field completion rates and statistics
+- Common and unique skills/interests across the community
+- FULL PROFILES for every active member including: name, bio, role, company, location, skills, interests, prompt_responses, and all_traits
+
+Use this rich context to generate specific, personalized questions that reference actual themes, skills, and interests present in the community. Avoid generic questions - instead create questions informed by what members have actually shared.""",
     "input_schema": {
         "type": "object",
         "properties": {},
@@ -218,7 +242,21 @@ SAVE_QUESTION_DECK_TOOL = {
                 "items": {
                     "type": "object",
                     "properties": {
-                        "question_text": {"type": "string"},
+                        "question_text": {"type": "string", "description": "The question to ask"},
+                        "question_type": {
+                            "type": "string",
+                            "enum": ["free_form", "multiple_choice", "yes_no", "fill_in_blank"],
+                            "description": "Type of question: free_form (open text), multiple_choice (select from options), yes_no (binary), fill_in_blank (complete a sentence)"
+                        },
+                        "options": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Required for multiple_choice: list of 3-5 answer options"
+                        },
+                        "blank_prompt": {
+                            "type": "string",
+                            "description": "Required for fill_in_blank: the sentence with ___ where the blank goes (e.g., 'My favorite way to recharge is ___')"
+                        },
                         "category": {
                             "type": "string",
                             "enum": ["origin_story", "creative_spark", "collaboration", "future_vision", "community_connection", "hidden_depths", "impact_legacy"]
@@ -229,7 +267,7 @@ SAVE_QUESTION_DECK_TOOL = {
                         "potential_insights": {"type": "array", "items": {"type": "string"}},
                         "related_profile_fields": {"type": "array", "items": {"type": "string"}}
                     },
-                    "required": ["question_text", "category", "purpose"]
+                    "required": ["question_text", "question_type", "category", "purpose"]
                 },
                 "description": "The questions to include in this deck"
             }

@@ -331,6 +331,7 @@ async def get_member(
 # Question Deck endpoints
 class GenerateGlobalDeckRequest(BaseModel):
     deck_name: str = "Community Discovery Deck"
+    description: Optional[str] = None
     num_questions: int = 20
     focus_categories: Optional[List[str]] = None
 
@@ -348,12 +349,15 @@ class RefineDeckRequest(BaseModel):
 class QuestionModel(BaseModel):
     id: int
     question_text: str
+    question_type: str
     category: str
     difficulty_level: int
     purpose: str
     follow_up_prompts: List[str]
     potential_insights: List[str]
     related_profile_fields: List[str]
+    options: List[str]
+    blank_prompt: Optional[str]
 
     class Config:
         from_attributes = True
@@ -390,6 +394,7 @@ async def generate_global_deck(
     agent = QuestionDeckAgent(db)
     result = await agent.generate_global_deck(
         deck_name=request.deck_name,
+        description=request.description,
         num_questions=request.num_questions,
         focus_categories=request.focus_categories
     )
@@ -478,12 +483,15 @@ async def list_decks(
                 QuestionModel(
                     id=q.id,
                     question_text=q.question_text,
+                    question_type=q.question_type.value,
                     category=q.category.value,
                     difficulty_level=q.difficulty_level,
                     purpose=q.purpose,
                     follow_up_prompts=q.follow_up_prompts or [],
                     potential_insights=q.potential_insights or [],
                     related_profile_fields=q.related_profile_fields or [],
+                    options=q.options or [],
+                    blank_prompt=q.blank_prompt,
                 )
                 for q in questions
             ],
@@ -527,12 +535,15 @@ async def get_deck(
             QuestionModel(
                 id=q.id,
                 question_text=q.question_text,
+                question_type=q.question_type.value,
                 category=q.category.value,
                 difficulty_level=q.difficulty_level,
                 purpose=q.purpose,
                 follow_up_prompts=q.follow_up_prompts or [],
                 potential_insights=q.potential_insights or [],
                 related_profile_fields=q.related_profile_fields or [],
+                options=q.options or [],
+                blank_prompt=q.blank_prompt,
             )
             for q in questions
         ],

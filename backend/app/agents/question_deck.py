@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import anthropic
 
-from app.models import Member, QuestionDeck, Question, QuestionCategory
+from app.models import Member, QuestionDeck, Question, QuestionCategory, QuestionType
 from app.core.config import settings
 from app.tools.question_tools import (
     get_community_profile_analysis,
@@ -27,10 +27,12 @@ Your job is to generate thoughtful, engaging questions that help surface interes
 
 2. **Enable connection**: Questions should help members discover unexpected commonalities with others.
 
-3. **Respect depth preferences**: Include questions at different depths:
-   - Level 1 (Easy): Quick, fun, approachable
-   - Level 2 (Medium): Thoughtful but not too personal
-   - Level 3 (Deep): Reflective, vulnerable, meaningful
+3. **Vary question depth**: Include a MIX of depths in every deck - not everything should require deep reflection:
+   - Level 1 (Easy): Quick, fun, approachable - answerable in 10 seconds (aim for ~40% of questions)
+   - Level 2 (Medium): Thoughtful but not too personal - a sentence or two (aim for ~40% of questions)
+   - Level 3 (Deep): Reflective, vulnerable, meaningful - requires real thought (aim for ~20% of questions)
+
+   IMPORTANT: Decks heavy on Level 3 questions feel exhausting. Keep it light and playful overall.
 
 4. **Be specific over generic**: "What's a problem you've been obsessed with solving?" beats "What are you working on?"
 
@@ -46,10 +48,29 @@ Your job is to generate thoughtful, engaging questions that help surface interes
 - **hidden_depths**: Unexpected skills, interests, experiences
 - **impact_legacy**: What they want to create/leave behind
 
+## Question Types
+
+Generate a variety of question TYPES to keep the experience engaging. Aim for this mix:
+- **free_form** (~40%): Open-ended questions requiring text responses. Best for deeper exploration.
+- **multiple_choice** (~25%): Select from 3-5 predefined options. Quick, fun, and easy to answer. Must include "options" array.
+- **yes_no** (~15%): Simple binary questions. Great for quick engagement and filtering.
+- **fill_in_blank** (~20%): Complete a sentence. Fun and reveals personality. Must include "blank_prompt" with ___ marking the blank.
+
+Examples:
+- free_form: "What's a skill you have that would surprise most people?"
+- multiple_choice: "What's your ideal collaboration style?" with options: ["Deep focus with one partner", "Small tight-knit team", "Large diverse group", "Solo with occasional feedback"]
+- yes_no: "Have you ever started a business?"
+- fill_in_blank: blank_prompt: "The thing I could talk about for hours is ___"
+
+IMPORTANT: Vary the types! Don't make an entire deck of free_form questions - mix in quick multiple_choice and yes_no questions to keep it light.
+
 ## Output Format
 
 When generating questions, provide:
 - question_text: The actual question
+- question_type: One of: free_form, multiple_choice, yes_no, fill_in_blank
+- options: (required for multiple_choice) Array of 3-5 answer choices
+- blank_prompt: (required for fill_in_blank) Sentence with ___ for the blank
 - category: One of the categories above
 - difficulty_level: 1-3
 - purpose: Why this question is valuable (1 sentence)
@@ -59,10 +80,14 @@ When generating questions, provide:
 
 ## Context Awareness
 
-When given community analysis data, use it to:
-- Identify under-explored areas across profiles
-- Find opportunities for discovering hidden connections
-- Generate questions that fill common gaps
+You will receive FULL PROFILE DATA for all community members. Use this rich context to:
+- Reference specific themes, skills, and interests actually present in the community
+- Create questions that could surface connections between members (e.g., if several members mention "AI" and "music", ask about creative uses of technology)
+- Notice patterns in how members describe themselves and ask questions that dig deeper into those patterns
+- Identify under-explored areas and generate questions that could reveal hidden commonalities
+- Generate questions that feel relevant to THIS specific community, not generic icebreakers
+
+IMPORTANT: Avoid generic questions like "What are your hobbies?" - instead, craft questions informed by what you see in the actual profiles. For example, if you notice many members are entrepreneurs, ask about the specific challenges of building something in a small town.
 
 When generating for a specific member, personalize based on their existing profile and gaps."""
 
@@ -78,6 +103,7 @@ class QuestionDeckAgent:
     async def generate_global_deck(
         self,
         deck_name: str = "Community Discovery Deck",
+        description: Optional[str] = None,
         num_questions: int = 20,
         focus_categories: Optional[List[str]] = None
     ) -> dict[str, Any]:
@@ -86,6 +112,7 @@ class QuestionDeckAgent:
 
         Args:
             deck_name: Name for the generated deck
+            description: Optional custom description/purpose for the deck
             num_questions: Target number of questions to generate
             focus_categories: Optional list of categories to focus on
 
@@ -97,10 +124,19 @@ class QuestionDeckAgent:
         if focus_categories:
             category_guidance = f"\n\nFocus especially on these categories: {', '.join(focus_categories)}"
 
+        custom_purpose = ""
+        if description:
+            custom_purpose = f"""
+
+IMPORTANT - Custom deck purpose provided by the user:
+\"\"\"{description}\"\"\"
+
+Generate questions that specifically serve this purpose. The description above should guide the theme, tone, and focus of all questions in the deck."""
+
         user_message = f"""Please generate a question deck for the White Rabbit community.
 
 First, use the get_community_profile_analysis tool to understand the current state of member profiles across the community.
-
+{custom_purpose}
 Then, generate approximately {num_questions} insightful questions that:
 1. Help fill common gaps you discover in the analysis
 2. Surface interesting insights about members that aren't captured in standard profile fields
@@ -108,7 +144,7 @@ Then, generate approximately {num_questions} insightful questions that:
 
 After generating the questions, use save_question_deck to persist them with:
 - Name: "{deck_name}"
-- A description explaining the deck's purpose and what analysis informed it
+- Description: {f'"{description}"' if description else 'A description explaining the deck\'s purpose and what analysis informed it'}
 - The complete list of questions"""
 
         return await self._execute_with_tools(user_message)
@@ -313,10 +349,17 @@ Use save_question_deck to save the refined deck with:
 
         questions = tool_input.get("questions", [])
         for idx, q in enumerate(questions):
+            # Parse question type, defaulting to free_form
+            question_type_str = q.get("question_type", "free_form")
+            question_type = QuestionType(question_type_str)
+
             question = Question(
                 deck_id=deck.id,
                 question_text=q["question_text"],
                 category=QuestionCategory(q["category"]),
+                question_type=question_type,
+                options=q.get("options", []) if question_type == QuestionType.MULTIPLE_CHOICE else [],
+                blank_prompt=q.get("blank_prompt") if question_type == QuestionType.FILL_IN_BLANK else None,
                 difficulty_level=q.get("difficulty_level", 1),
                 estimated_time_minutes=q.get("estimated_time_minutes", 2),
                 purpose=q["purpose"],

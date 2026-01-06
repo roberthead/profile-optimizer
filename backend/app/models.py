@@ -20,6 +20,14 @@ class QuestionCategory(str, PyEnum):
     HIDDEN_DEPTHS = "hidden_depths"
     IMPACT_LEGACY = "impact_legacy"
 
+
+class QuestionType(str, PyEnum):
+    """Types of questions based on answer format."""
+    FREE_FORM = "free_form"           # Open-ended text response
+    MULTIPLE_CHOICE = "multiple_choice"  # Select from predefined options
+    YES_NO = "yes_no"                 # Simple yes/no question
+    FILL_IN_BLANK = "fill_in_blank"   # Complete a sentence
+
 class Member(Base):
     __tablename__ = "members"
 
@@ -153,6 +161,11 @@ class Question(Base):
     # Question content
     question_text: Mapped[str] = mapped_column(Text)
     category: Mapped[QuestionCategory] = mapped_column(Enum(QuestionCategory))
+    question_type: Mapped[QuestionType] = mapped_column(Enum(QuestionType), default=QuestionType.FREE_FORM)
+
+    # Type-specific content
+    options: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), default=list)  # For multiple_choice
+    blank_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # For fill_in_blank (e.g., "My favorite way to unwind is ___")
 
     # For gamification and engagement
     difficulty_level: Mapped[int] = mapped_column(Integer, default=1)  # 1-3: easy, medium, deep

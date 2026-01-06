@@ -3,6 +3,7 @@ import { Layout } from './components/Layout'
 import { Home } from './pages/Home'
 import { MembersList } from './pages/MembersList'
 import { MemberDetail } from './pages/MemberDetail'
+import { Questions } from './pages/Questions'
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/members" element={<MembersList />} />
           <Route path="/members/:id" element={<MemberDetail />} />
+          <Route path="/questions" element={<Questions />} />
         </Routes>
       </Layout>
     </BrowserRouter>
