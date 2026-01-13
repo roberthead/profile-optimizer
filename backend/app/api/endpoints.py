@@ -10,7 +10,8 @@ from app.agents.profile_evaluation import ProfileEvaluationAgent
 from app.agents.profile_chat import ProfileChatAgent
 from app.agents.url_processing import UrlProcessingAgent
 from app.agents.question_deck import QuestionDeckAgent
-from app.models import Member, ProfileCompleteness, ConversationHistory, QuestionDeck, Question, SocialLink
+from app.agents.pattern_finder import PatternFinderAgent
+from app.models import Member, ProfileCompleteness, ConversationHistory, QuestionDeck, Question, SocialLink, Pattern, PatternCategory
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
@@ -685,4 +686,130 @@ async def sync_members_from_api(
         updated=updated,
         skipped=skipped,
         message=f"Synced {created + updated} members from White Rabbit API"
+    )
+
+
+# Pattern discovery endpoints
+
+class PatternModel(BaseModel):
+    id: int
+    name: str
+    description: str
+    category: str
+    member_count: int
+    related_member_ids: List[int]
+    evidence: Optional[dict]
+    question_prompts: List[str]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PatternDiscoveryResponse(BaseModel):
+    success: bool
+    patterns_found: int
+    patterns: List[dict]
+    response_text: str
+
+
+@router.post("/patterns/discover", response_model=PatternDiscoveryResponse)
+async def discover_patterns(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Discover patterns in community member data.
+
+    Analyzes all member profiles to identify meaningful patterns
+    such as skill clusters, interest themes, and collaboration opportunities.
+    """
+    agent = PatternFinderAgent(db)
+    result = await agent.discover_patterns()
+    return PatternDiscoveryResponse(**result)
+
+
+@router.post("/patterns/refresh", response_model=PatternDiscoveryResponse)
+async def refresh_patterns(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Refresh all patterns by re-analyzing member data.
+
+    Deactivates existing patterns and runs a fresh discovery.
+    """
+    agent = PatternFinderAgent(db)
+    result = await agent.refresh_patterns()
+    return PatternDiscoveryResponse(**result)
+
+
+@router.get("/patterns", response_model=List[PatternModel])
+async def list_patterns(
+    category: Optional[str] = None,
+    active_only: bool = True,
+    db: AsyncSession = Depends(get_db)
+):
+    """List discovered patterns, optionally filtered by category."""
+    query = select(Pattern)
+
+    if active_only:
+        query = query.where(Pattern.is_active == True)
+
+    if category:
+        try:
+            cat_enum = PatternCategory(category)
+            query = query.where(Pattern.category == cat_enum)
+        except ValueError:
+            pass  # Invalid category, ignore filter
+
+    query = query.order_by(Pattern.member_count.desc())
+
+    result = await db.execute(query)
+    patterns = result.scalars().all()
+
+    return [
+        PatternModel(
+            id=p.id,
+            name=p.name,
+            description=p.description,
+            category=p.category.value,
+            member_count=p.member_count,
+            related_member_ids=p.related_member_ids or [],
+            evidence=p.evidence,
+            question_prompts=p.question_prompts or [],
+            is_active=p.is_active,
+            created_at=p.created_at,
+            updated_at=p.updated_at,
+        )
+        for p in patterns
+    ]
+
+
+@router.get("/patterns/{pattern_id}", response_model=PatternModel)
+async def get_pattern(
+    pattern_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get a specific pattern by ID."""
+    result = await db.execute(
+        select(Pattern).where(Pattern.id == pattern_id)
+    )
+    pattern = result.scalar_one_or_none()
+
+    if not pattern:
+        raise HTTPException(status_code=404, detail="Pattern not found")
+
+    return PatternModel(
+        id=pattern.id,
+        name=pattern.name,
+        description=pattern.description,
+        category=pattern.category.value,
+        member_count=pattern.member_count,
+        related_member_ids=pattern.related_member_ids or [],
+        evidence=pattern.evidence,
+        question_prompts=pattern.question_prompts or [],
+        is_active=pattern.is_active,
+        created_at=pattern.created_at,
+        updated_at=pattern.updated_at,
     )
