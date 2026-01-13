@@ -1,11 +1,11 @@
-"""Tools for question generation that can be used by the QuestionDeckAgent."""
+"""Tools for question generation and pattern discovery."""
 
 from collections import Counter
 from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models import Member
+from app.models import Member, Pattern, PatternCategory
 
 
 async def get_community_profile_analysis(db: AsyncSession) -> dict[str, Any]:
@@ -273,5 +273,118 @@ SAVE_QUESTION_DECK_TOOL = {
             }
         },
         "required": ["name", "description", "questions"]
+    }
+}
+
+
+# Pattern discovery tools
+
+async def save_pattern(db: AsyncSession, pattern_data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Save or update a discovered pattern.
+
+    If a pattern with the same name exists, it will be updated.
+    Otherwise, a new pattern is created.
+
+    Args:
+        db: Database session.
+        pattern_data: Pattern data including name, description, category, etc.
+
+    Returns:
+        dict with pattern id, name, and whether it was created or updated.
+    """
+    name = pattern_data.get("name")
+    if not name:
+        return {"error": "Pattern name is required"}
+
+    # Check for existing pattern by name
+    result = await db.execute(
+        select(Pattern).where(Pattern.name == name)
+    )
+    pattern = result.scalar_one_or_none()
+
+    # Convert category string to enum if needed
+    category = pattern_data.get("category")
+    if isinstance(category, str):
+        try:
+            category = PatternCategory(category)
+        except ValueError:
+            return {"error": f"Invalid category: {category}"}
+
+    was_created = pattern is None
+
+    if pattern:
+        # Update existing pattern
+        pattern.description = pattern_data.get("description", pattern.description)
+        pattern.category = category or pattern.category
+        pattern.member_count = pattern_data.get("member_count", pattern.member_count)
+        pattern.related_member_ids = pattern_data.get("related_member_ids", pattern.related_member_ids)
+        pattern.evidence = pattern_data.get("evidence", pattern.evidence)
+        pattern.question_prompts = pattern_data.get("question_prompts", pattern.question_prompts)
+        pattern.is_active = pattern_data.get("is_active", pattern.is_active)
+    else:
+        # Create new pattern
+        pattern = Pattern(
+            name=name,
+            description=pattern_data.get("description", ""),
+            category=category,
+            member_count=pattern_data.get("member_count", 0),
+            related_member_ids=pattern_data.get("related_member_ids", []),
+            evidence=pattern_data.get("evidence"),
+            question_prompts=pattern_data.get("question_prompts", []),
+            is_active=pattern_data.get("is_active", True),
+        )
+        db.add(pattern)
+
+    await db.commit()
+    await db.refresh(pattern)
+
+    return {
+        "id": pattern.id,
+        "name": pattern.name,
+        "created": was_created,
+        "updated": not was_created,
+    }
+
+
+SAVE_PATTERN_TOOL = {
+    "name": "save_pattern",
+    "description": "Save a discovered pattern to the database. If a pattern with the same name exists, it will be updated.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "Short, unique pattern name (e.g., 'Tech + Arts Fusion')"
+            },
+            "description": {
+                "type": "string",
+                "description": "Detailed description of what this pattern reveals about the community"
+            },
+            "category": {
+                "type": "string",
+                "enum": ["skill_cluster", "interest_theme", "collaboration_opportunity", "community_strength", "cross_domain"],
+                "description": "Category of pattern"
+            },
+            "member_count": {
+                "type": "integer",
+                "description": "Number of members who exhibit this pattern"
+            },
+            "related_member_ids": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": "IDs of members who exhibit this pattern"
+            },
+            "evidence": {
+                "type": "object",
+                "description": "Supporting data (e.g., skill names, frequencies, examples)"
+            },
+            "question_prompts": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "2-3 questions that could explore this pattern further"
+            }
+        },
+        "required": ["name", "description", "category", "member_count"]
     }
 }
