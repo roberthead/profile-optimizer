@@ -170,9 +170,14 @@ class WhiteRabbitClient:
         # All retries exhausted
         raise last_exception or WhiteRabbitAPIError("Request failed after all retries")
 
-    async def fetch_members(self) -> list[dict[str, Any]]:
+    async def fetch_members(self, limit: int = 50) -> list[dict[str, Any]]:
         """
         Fetch all members from the White Rabbit API.
+
+        Handles pagination automatically to retrieve all members.
+
+        Args:
+            limit: Number of members per page (max 50).
 
         Returns:
             List of member data dictionaries.
@@ -183,23 +188,37 @@ class WhiteRabbitClient:
         """
         logger.info("Fetching members from White Rabbit API")
 
-        # TODO: Adjust endpoint based on actual API documentation
-        # Common patterns: /members, /api/members, /v1/members, /profiles
-        response = await self._request("GET", "/members")
+        all_members: list[dict[str, Any]] = []
+        page = 1
+        limit = min(limit, 50)  # API max is 50
 
-        # Handle different response formats
-        if isinstance(response, list):
-            members = response
-        elif isinstance(response, dict) and "data" in response:
-            members = response["data"]
-        elif isinstance(response, dict) and "members" in response:
-            members = response["members"]
-        else:
-            logger.warning(f"Unexpected response format: {type(response)}")
-            members = response if isinstance(response, list) else []
+        while True:
+            response = await self._request(
+                "GET",
+                "/community/members",
+                params={"page": page, "limit": limit},
+            )
 
-        logger.info(f"Fetched {len(members)} members from API")
-        return members
+            # Extract members from response
+            if isinstance(response, dict):
+                members = response.get("members", response.get("data", []))
+                pagination = response.get("pagination", {})
+            else:
+                members = response if isinstance(response, list) else []
+                pagination = {}
+
+            all_members.extend(members)
+            logger.debug(f"Fetched page {page}: {len(members)} members")
+
+            # Check if there are more pages
+            total_pages = pagination.get("totalPages", 1)
+            if page >= total_pages or not members:
+                break
+
+            page += 1
+
+        logger.info(f"Fetched {len(all_members)} total members from API")
+        return all_members
 
     async def fetch_member(self, profile_id: str) -> dict[str, Any] | None:
         """
@@ -218,13 +237,49 @@ class WhiteRabbitClient:
         logger.info(f"Fetching member {profile_id} from White Rabbit API")
 
         try:
-            response = await self._request("GET", f"/members/{profile_id}")
+            response = await self._request("GET", f"/community/members/{profile_id}")
+            # Response may be wrapped in a "member" key
+            if isinstance(response, dict) and "member" in response:
+                return response["member"]
             return response
         except WhiteRabbitAPIError as e:
             if e.status_code == 404:
                 logger.info(f"Member {profile_id} not found")
                 return None
             raise
+
+    async def fetch_member_answers(
+        self, profile_id: str, source: str | None = None
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch a member's profile question answers.
+
+        Args:
+            profile_id: The member's profile UUID.
+            source: Optional filter by source (e.g., 'profile_optimizer').
+
+        Returns:
+            List of answer dictionaries.
+
+        Raises:
+            WhiteRabbitAuthError: If authentication fails.
+            WhiteRabbitAPIError: For other API errors.
+        """
+        logger.info(f"Fetching answers for member {profile_id}")
+
+        params = {}
+        if source:
+            params["source"] = source
+
+        response = await self._request(
+            "GET",
+            f"/community/members/{profile_id}/answers",
+            params=params if params else None,
+        )
+
+        if isinstance(response, dict):
+            return response.get("answers", [])
+        return response if isinstance(response, list) else []
 
     async def health_check(self) -> bool:
         """
@@ -240,9 +295,12 @@ class WhiteRabbitClient:
         logger.info("Performing API health check")
 
         try:
-            # Try to fetch members with a limit of 1 to minimize data transfer
-            # Adjust based on actual API capabilities
-            await self._request("GET", "/members")
+            # Fetch first page with limit of 1 to minimize data transfer
+            await self._request(
+                "GET",
+                "/community/members",
+                params={"page": 1, "limit": 1},
+            )
             logger.info("API health check passed")
             return True
         except WhiteRabbitAPIError:

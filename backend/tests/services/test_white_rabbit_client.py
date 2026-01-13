@@ -76,8 +76,8 @@ class TestWhiteRabbitClientFetchMembers:
     """Tests for fetch_members method."""
 
     @pytest.mark.asyncio
-    async def test_returns_list_response(self):
-        """Returns member list when API returns a list."""
+    async def test_fetches_from_correct_endpoint(self):
+        """Fetches from /community/members endpoint."""
         client = WhiteRabbitClient(
             api_url="https://example.com",
             api_key="test-key",
@@ -85,20 +85,54 @@ class TestWhiteRabbitClientFetchMembers:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = [
-            {"profile_id": "123", "email": "test@example.com"},
-            {"profile_id": "456", "email": "test2@example.com"},
-        ]
+        mock_response.json.return_value = {
+            "members": [{"profile_id": "123"}],
+            "pagination": {"totalPages": 1},
+        }
 
         with patch.object(
             httpx.AsyncClient, "request", new_callable=AsyncMock
         ) as mock_request:
             mock_request.return_value = mock_response
 
+            await client.fetch_members()
+
+            call_kwargs = mock_request.call_args
+            assert "/community/members" in call_kwargs.kwargs["url"]
+
+    @pytest.mark.asyncio
+    async def test_handles_pagination(self):
+        """Fetches all pages when multiple pages exist."""
+        client = WhiteRabbitClient(
+            api_url="https://example.com",
+            api_key="test-key",
+        )
+
+        # Page 1 response
+        page1_response = MagicMock()
+        page1_response.status_code = 200
+        page1_response.json.return_value = {
+            "members": [{"profile_id": "1"}, {"profile_id": "2"}],
+            "pagination": {"totalPages": 2, "page": 1},
+        }
+
+        # Page 2 response
+        page2_response = MagicMock()
+        page2_response.status_code = 200
+        page2_response.json.return_value = {
+            "members": [{"profile_id": "3"}],
+            "pagination": {"totalPages": 2, "page": 2},
+        }
+
+        with patch.object(
+            httpx.AsyncClient, "request", new_callable=AsyncMock
+        ) as mock_request:
+            mock_request.side_effect = [page1_response, page2_response]
+
             result = await client.fetch_members()
 
-            assert len(result) == 2
-            assert result[0]["profile_id"] == "123"
+            assert len(result) == 3
+            assert mock_request.call_count == 2
 
     @pytest.mark.asyncio
     async def test_handles_data_wrapper(self):
@@ -112,7 +146,7 @@ class TestWhiteRabbitClientFetchMembers:
         mock_response.status_code = 200
         mock_response.json.return_value = {
             "data": [{"profile_id": "123"}],
-            "meta": {"total": 1},
+            "pagination": {"totalPages": 1},
         }
 
         with patch.object(
@@ -137,6 +171,7 @@ class TestWhiteRabbitClientFetchMembers:
         mock_response.status_code = 200
         mock_response.json.return_value = {
             "members": [{"profile_id": "123"}],
+            "pagination": {"totalPages": 1},
         }
 
         with patch.object(
@@ -323,9 +358,32 @@ class TestWhiteRabbitClientFetchMember:
 
             assert result["profile_id"] == "123"
             mock_request.assert_called_once()
-            # Verify the URL includes the profile ID
+            # Verify the URL includes the correct path
             call_kwargs = mock_request.call_args
-            assert "/members/123" in call_kwargs.kwargs["url"]
+            assert "/community/members/123" in call_kwargs.kwargs["url"]
+
+    @pytest.mark.asyncio
+    async def test_unwraps_member_key(self):
+        """Extracts member from 'member' wrapper if present."""
+        client = WhiteRabbitClient(
+            api_url="https://example.com",
+            api_key="test-key",
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "member": {"profile_id": "123", "email": "test@example.com"},
+        }
+
+        with patch.object(
+            httpx.AsyncClient, "request", new_callable=AsyncMock
+        ) as mock_request:
+            mock_request.return_value = mock_response
+
+            result = await client.fetch_member("123")
+
+            assert result["profile_id"] == "123"
 
     @pytest.mark.asyncio
     async def test_returns_none_for_404(self):
@@ -347,6 +405,58 @@ class TestWhiteRabbitClientFetchMember:
             result = await client.fetch_member("nonexistent")
 
             assert result is None
+
+
+class TestWhiteRabbitClientFetchMemberAnswers:
+    """Tests for fetch_member_answers method."""
+
+    @pytest.mark.asyncio
+    async def test_fetches_answers(self):
+        """Fetches member answers from correct endpoint."""
+        client = WhiteRabbitClient(
+            api_url="https://example.com",
+            api_key="test-key",
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "answers": [{"question_id": "q1", "answer": "test"}],
+        }
+
+        with patch.object(
+            httpx.AsyncClient, "request", new_callable=AsyncMock
+        ) as mock_request:
+            mock_request.return_value = mock_response
+
+            result = await client.fetch_member_answers("123")
+
+            assert len(result) == 1
+            assert result[0]["question_id"] == "q1"
+            call_kwargs = mock_request.call_args
+            assert "/community/members/123/answers" in call_kwargs.kwargs["url"]
+
+    @pytest.mark.asyncio
+    async def test_passes_source_filter(self):
+        """Passes source parameter when provided."""
+        client = WhiteRabbitClient(
+            api_url="https://example.com",
+            api_key="test-key",
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"answers": []}
+
+        with patch.object(
+            httpx.AsyncClient, "request", new_callable=AsyncMock
+        ) as mock_request:
+            mock_request.return_value = mock_response
+
+            await client.fetch_member_answers("123", source="profile_optimizer")
+
+            call_kwargs = mock_request.call_args
+            assert call_kwargs.kwargs["params"]["source"] == "profile_optimizer"
 
 
 class TestWhiteRabbitClientHealthCheck:
