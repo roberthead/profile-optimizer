@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Search, ChevronLeft, ChevronRight, Users, MapPin, Briefcase } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Users, MapPin, Briefcase, RefreshCw } from 'lucide-react';
 
 interface MemberSummary {
   id: number;
@@ -32,6 +32,14 @@ const MEMBERSHIP_STATUSES = [
   { value: 'active_team_member', label: 'Team Member' },
 ];
 
+interface SyncResponse {
+  success: boolean;
+  created: number;
+  updated: number;
+  skipped: number;
+  message: string;
+}
+
 async function fetchMembers(
   page: number,
   search: string,
@@ -51,6 +59,20 @@ async function fetchMembers(
 
   if (!response.ok) {
     throw new Error('Failed to fetch members');
+  }
+
+  return response.json();
+}
+
+async function syncMembersFromApi(): Promise<SyncResponse> {
+  const response = await fetch(
+    'http://localhost:8000/api/v1/admin/sync-members',
+    { method: 'POST' }
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to sync members');
   }
 
   return response.json();
@@ -86,6 +108,9 @@ export const MembersList: React.FC = () => {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [membershipStatus, setMembershipStatus] = useState('');
+  const [syncResult, setSyncResult] = useState<SyncResponse | null>(null);
+
+  const queryClient = useQueryClient();
 
   // Debounce search input
   React.useEffect(() => {
@@ -99,6 +124,15 @@ export const MembersList: React.FC = () => {
   const { data, isLoading, error } = useQuery({
     queryKey: ['members', page, debouncedSearch, membershipStatus],
     queryFn: () => fetchMembers(page, debouncedSearch, membershipStatus),
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: syncMembersFromApi,
+    onSuccess: (result) => {
+      setSyncResult(result);
+      // Refresh the members list
+      queryClient.invalidateQueries({ queryKey: ['members'] });
+    },
   });
 
   if (error) {
@@ -258,6 +292,47 @@ export const MembersList: React.FC = () => {
                 <ChevronRight className="w-5 h-5" />
               </button>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Sync from API Section */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-medium text-gray-900">Sync Member Data</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Fetch the latest member data from the White Rabbit API
+            </p>
+          </div>
+          <button
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+            {syncMutation.isPending ? 'Syncing...' : 'Fetch Member Data'}
+          </button>
+        </div>
+
+        {/* Sync Result */}
+        {syncResult && (
+          <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-sm text-green-800">
+              {syncResult.message}
+            </p>
+            <p className="text-xs text-green-600 mt-1">
+              Created: {syncResult.created} | Updated: {syncResult.updated} | Skipped: {syncResult.skipped}
+            </p>
+          </div>
+        )}
+
+        {/* Sync Error */}
+        {syncMutation.isError && (
+          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-800">
+              {syncMutation.error instanceof Error ? syncMutation.error.message : 'Failed to sync members'}
+            </p>
           </div>
         )}
       </div>

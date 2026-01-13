@@ -1,14 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user_id
+from app.services import WhiteRabbitClient, WhiteRabbitAPIError
+from app.utils import normalize_string, normalize_list, parse_datetime
 from app.agents.interactive import InteractiveAgent
 from app.agents.profile_evaluation import ProfileEvaluationAgent
 from app.agents.profile_chat import ProfileChatAgent
 from app.agents.url_processing import UrlProcessingAgent
 from app.agents.question_deck import QuestionDeckAgent
-from app.models import Member, ProfileCompleteness, ConversationHistory, QuestionDeck, Question
+from app.models import Member, ProfileCompleteness, ConversationHistory, QuestionDeck, Question, SocialLink
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
@@ -548,4 +550,116 @@ async def get_deck(
             for q in questions
         ],
         created_at=deck.created_at,
+    )
+
+
+# Admin endpoints
+class SyncMembersResponse(BaseModel):
+    success: bool
+    created: int
+    updated: int
+    skipped: int
+    message: str
+
+
+@router.post("/admin/sync-members", response_model=SyncMembersResponse)
+async def sync_members_from_api(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Sync members from the White Rabbit API.
+
+    Fetches all members from the White Rabbit API and syncs them
+    to the local database. New members are created, existing members
+    are updated.
+    """
+    try:
+        client = WhiteRabbitClient()
+        api_members = await client.fetch_members()
+    except ValueError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Configuration error: {str(e)}. Make sure WHITE_RABBIT_API_KEY is set."
+        )
+    except WhiteRabbitAPIError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch from White Rabbit API: {e.message}"
+        )
+
+    created = 0
+    updated = 0
+    skipped = 0
+    seen_emails: set[str] = set()
+
+    for record in api_members:
+        try:
+            # Handle different field names from API
+            profile_id = record.get("profile_id") or record.get("profileId")
+            clerk_user_id = record.get("clerk_user_id") or record.get("clerkUserId")
+            email = record.get("clerk_email") or record.get("email")
+
+            if not profile_id or not email:
+                skipped += 1
+                continue
+
+            # Skip duplicates
+            if email in seen_emails:
+                skipped += 1
+                continue
+            seen_emails.add(email)
+
+            # Check if member exists
+            existing = await db.execute(
+                select(Member).where(
+                    (Member.profile_id == profile_id) |
+                    (Member.email == email)
+                )
+            )
+            existing_member = existing.scalar_one_or_none()
+
+            member_data = {
+                "profile_id": profile_id,
+                "clerk_user_id": clerk_user_id,
+                "email": email,
+                "first_name": normalize_string(record.get("first_name") or record.get("firstName")),
+                "last_name": normalize_string(record.get("last_name") or record.get("lastName")),
+                "bio": normalize_string(record.get("bio")),
+                "company": normalize_string(record.get("company")),
+                "role": normalize_string(record.get("role")),
+                "website": normalize_string(record.get("website")),
+                "location": normalize_string(record.get("location")),
+                "membership_status": record.get("membership_status") or record.get("membershipStatus") or "free",
+                "is_public": record.get("is_public", True),
+                "urls": normalize_list(record.get("urls")),
+                "roles": normalize_list(record.get("roles")),
+                "prompt_responses": normalize_list(record.get("prompt_responses") or record.get("promptResponses")),
+                "skills": normalize_list(record.get("skills")),
+                "interests": normalize_list(record.get("interests")),
+                "all_traits": normalize_list(record.get("all_traits") or record.get("allTraits")),
+            }
+
+            if existing_member:
+                # Update existing member
+                for key, value in member_data.items():
+                    setattr(existing_member, key, value)
+                updated += 1
+            else:
+                # Create new member
+                member = Member(**member_data)
+                db.add(member)
+                created += 1
+
+        except Exception as e:
+            skipped += 1
+            continue
+
+    await db.commit()
+
+    return SyncMembersResponse(
+        success=True,
+        created=created,
+        updated=updated,
+        skipped=skipped,
+        message=f"Synced {created + updated} members from White Rabbit API"
     )
