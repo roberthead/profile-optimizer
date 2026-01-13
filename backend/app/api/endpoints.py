@@ -594,12 +594,14 @@ async def sync_members_from_api(
 
     for record in api_members:
         try:
-            # Handle different field names from API
-            profile_id = record.get("profile_id") or record.get("profileId")
-            clerk_user_id = record.get("clerk_user_id") or record.get("clerkUserId")
-            email = record.get("clerk_email") or record.get("email")
+            # Handle API format (id, camelCase) and export format (profile_id, snake_case)
+            profile_id = record.get("profile_id") or record.get("profileId") or record.get("id")
 
-            if not profile_id or not email:
+            # API doesn't return email/clerk_user_id for privacy - generate placeholders
+            clerk_user_id = record.get("clerk_user_id") or record.get("clerkUserId") or f"api_sync_{profile_id}"
+            email = record.get("clerk_email") or record.get("clerkEmail") or record.get("email") or f"{profile_id}@api-sync.local"
+
+            if not profile_id:
                 skipped += 1
                 continue
 
@@ -609,14 +611,34 @@ async def sync_members_from_api(
                 continue
             seen_emails.add(email)
 
-            # Check if member exists
+            # Check if member exists (by profile_id)
             existing = await db.execute(
-                select(Member).where(
-                    (Member.profile_id == profile_id) |
-                    (Member.email == email)
-                )
+                select(Member).where(Member.profile_id == profile_id)
             )
             existing_member = existing.scalar_one_or_none()
+
+            # Extract skills and interests from traits array (API format)
+            traits = record.get("traits", [])
+            skills_from_traits = [t.get("name") for t in traits if t.get("relationshipType") == "SKILL"]
+            interests_from_traits = [t.get("name") for t in traits if t.get("relationshipType") == "INTEREST"]
+            all_trait_names = [t.get("name") for t in traits]
+
+            # Extract prompt response texts (API format)
+            prompt_responses_api = record.get("promptResponses", [])
+            prompt_response_texts = [
+                f"{pr.get('promptText', '')}: {pr.get('responseText', '')}"
+                for pr in prompt_responses_api if pr.get("responseText")
+            ]
+
+            # Map membershipTier to membership_status
+            membership_tier = record.get("membershipTier", "")
+            membership_status_map = {
+                "Creator": "active_create",
+                "Fellow": "active_fellow",
+                "Team": "active_team_member",
+                "Free": "free",
+            }
+            membership_status = membership_status_map.get(membership_tier, record.get("membership_status") or record.get("membershipStatus") or "free")
 
             member_data = {
                 "profile_id": profile_id,
@@ -624,19 +646,20 @@ async def sync_members_from_api(
                 "email": email,
                 "first_name": normalize_string(record.get("first_name") or record.get("firstName")),
                 "last_name": normalize_string(record.get("last_name") or record.get("lastName")),
+                "profile_photo_url": normalize_string(record.get("avatar") or record.get("profile_photo_url")),
                 "bio": normalize_string(record.get("bio")),
                 "company": normalize_string(record.get("company")),
                 "role": normalize_string(record.get("role")),
                 "website": normalize_string(record.get("website")),
                 "location": normalize_string(record.get("location")),
-                "membership_status": record.get("membership_status") or record.get("membershipStatus") or "free",
-                "is_public": record.get("is_public", True),
+                "membership_status": membership_status,
+                "is_public": record.get("is_public") if record.get("is_public") is not None else record.get("isPublic", True),
                 "urls": normalize_list(record.get("urls")),
                 "roles": normalize_list(record.get("roles")),
-                "prompt_responses": normalize_list(record.get("prompt_responses") or record.get("promptResponses")),
-                "skills": normalize_list(record.get("skills")),
-                "interests": normalize_list(record.get("interests")),
-                "all_traits": normalize_list(record.get("all_traits") or record.get("allTraits")),
+                "prompt_responses": normalize_list(record.get("prompt_responses")) or prompt_response_texts,
+                "skills": normalize_list(record.get("skills")) or skills_from_traits,
+                "interests": normalize_list(record.get("interests")) or interests_from_traits,
+                "all_traits": normalize_list(record.get("all_traits") or record.get("allTraits")) or all_trait_names,
             }
 
             if existing_member:
