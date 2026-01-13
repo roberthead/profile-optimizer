@@ -108,31 +108,39 @@ class TestWhiteRabbitClientFetchMembers:
             api_key="test-key",
         )
 
+        # Page 0 response (API uses 0-indexed pagination)
+        page0_response = MagicMock()
+        page0_response.status_code = 200
+        page0_response.json.return_value = {
+            "members": [{"profile_id": "1"}, {"profile_id": "2"}],
+            "pagination": {"totalPages": 2, "page": 0},
+        }
+
         # Page 1 response
         page1_response = MagicMock()
         page1_response.status_code = 200
         page1_response.json.return_value = {
-            "members": [{"profile_id": "1"}, {"profile_id": "2"}],
+            "members": [{"profile_id": "3"}],
             "pagination": {"totalPages": 2, "page": 1},
         }
 
-        # Page 2 response
+        # Page 2 response (empty, stops pagination)
         page2_response = MagicMock()
         page2_response.status_code = 200
         page2_response.json.return_value = {
-            "members": [{"profile_id": "3"}],
+            "members": [],
             "pagination": {"totalPages": 2, "page": 2},
         }
 
         with patch.object(
             httpx.AsyncClient, "request", new_callable=AsyncMock
         ) as mock_request:
-            mock_request.side_effect = [page1_response, page2_response]
+            mock_request.side_effect = [page0_response, page1_response, page2_response]
 
             result = await client.fetch_members()
 
             assert len(result) == 3
-            assert mock_request.call_count == 2
+            assert mock_request.call_count == 3
 
     @pytest.mark.asyncio
     async def test_handles_data_wrapper(self):
@@ -142,17 +150,26 @@ class TestWhiteRabbitClientFetchMembers:
             api_key="test-key",
         )
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+        # Page 0 response with data
+        page0_response = MagicMock()
+        page0_response.status_code = 200
+        page0_response.json.return_value = {
             "data": [{"profile_id": "123"}],
+            "pagination": {"totalPages": 1},
+        }
+
+        # Page 1 response (empty, stops pagination)
+        page1_response = MagicMock()
+        page1_response.status_code = 200
+        page1_response.json.return_value = {
+            "data": [],
             "pagination": {"totalPages": 1},
         }
 
         with patch.object(
             httpx.AsyncClient, "request", new_callable=AsyncMock
         ) as mock_request:
-            mock_request.return_value = mock_response
+            mock_request.side_effect = [page0_response, page1_response]
 
             result = await client.fetch_members()
 
@@ -167,17 +184,26 @@ class TestWhiteRabbitClientFetchMembers:
             api_key="test-key",
         )
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+        # Page 0 response with members
+        page0_response = MagicMock()
+        page0_response.status_code = 200
+        page0_response.json.return_value = {
             "members": [{"profile_id": "123"}],
+            "pagination": {"totalPages": 1},
+        }
+
+        # Page 1 response (empty, stops pagination)
+        page1_response = MagicMock()
+        page1_response.status_code = 200
+        page1_response.json.return_value = {
+            "members": [],
             "pagination": {"totalPages": 1},
         }
 
         with patch.object(
             httpx.AsyncClient, "request", new_callable=AsyncMock
         ) as mock_request:
-            mock_request.return_value = mock_response
+            mock_request.side_effect = [page0_response, page1_response]
 
             result = await client.fetch_members()
 

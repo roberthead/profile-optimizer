@@ -189,7 +189,7 @@ class WhiteRabbitClient:
         logger.info("Fetching members from White Rabbit API")
 
         all_members: list[dict[str, Any]] = []
-        page = 1
+        page = 0  # API uses 0-indexed pagination
         limit = min(limit, 50)  # API max is 50
 
         while True:
