@@ -5,7 +5,7 @@ import asyncio
 from unittest.mock import MagicMock, AsyncMock
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
-from app.models import Member, QuestionDeck, Question, QuestionCategory
+from app.models import Member, QuestionDeck, Question, QuestionCategory, Pattern, PatternCategory
 
 
 @pytest.fixture(scope="session")
@@ -126,3 +126,19 @@ def mock_anthropic_client():
     """Create a mock Anthropic client for testing."""
     client = MagicMock()
     return client
+
+
+@pytest.fixture
+def sample_pattern():
+    """Create a sample pattern for testing."""
+    pattern = MagicMock(spec=Pattern)
+    pattern.id = 1
+    pattern.name = "Creative Technologists"
+    pattern.description = "Members combining technical and creative skills"
+    pattern.category = PatternCategory.SKILL_CLUSTER
+    pattern.member_count = 5
+    pattern.related_member_ids = [1, 2, 3]
+    pattern.evidence = {"skills": ["Python", "Design"]}
+    pattern.question_prompts = ["What inspires your creative work?"]
+    pattern.is_active = True
+    return pattern
