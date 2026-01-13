@@ -28,6 +28,16 @@ class QuestionType(str, PyEnum):
     YES_NO = "yes_no"                 # Simple yes/no question
     FILL_IN_BLANK = "fill_in_blank"   # Complete a sentence
 
+
+class PatternCategory(str, PyEnum):
+    """Categories for discovered community patterns."""
+    SKILL_CLUSTER = "skill_cluster"           # Groups of related skills that appear together
+    INTEREST_THEME = "interest_theme"         # Common interest areas/passions
+    COLLABORATION_OPPORTUNITY = "collaboration_opportunity"  # Complementary skills/potential partnerships
+    COMMUNITY_STRENGTH = "community_strength" # Core competencies of the community
+    CROSS_DOMAIN = "cross_domain"             # Interesting overlaps between different areas
+
+
 class Member(Base):
     __tablename__ = "members"
 
@@ -211,3 +221,28 @@ class QuestionResponse(Base):
     # Relationships
     question: Mapped["Question"] = relationship(back_populates="responses")
     member: Mapped["Member"] = relationship(back_populates="question_responses")
+
+
+class Pattern(Base):
+    """Discovered patterns in community member data."""
+    __tablename__ = "patterns"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    description: Mapped[str] = mapped_column(Text)
+    category: Mapped[PatternCategory] = mapped_column(Enum(PatternCategory), index=True)
+
+    # Evidence and context
+    member_count: Mapped[int] = mapped_column(Integer, default=0)
+    related_member_ids: Mapped[Optional[List[int]]] = mapped_column(ARRAY(Integer), default=list)
+    evidence: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # For question generation
+    question_prompts: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), default=list)
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
