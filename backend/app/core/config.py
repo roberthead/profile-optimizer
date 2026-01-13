@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     # AI
     ANTHROPIC_API_KEY: Optional[str] = None
 
+    # White Rabbit API
+    WHITE_RABBIT_API_URL: str = "https://whiterabbitashland.com/api"
+    WHITE_RABBIT_API_KEY: Optional[str] = None
+
     model_config = SettingsConfigDict(env_file=str(ENV_FILE), case_sensitive=True)
 
     def get_database_url(self) -> str:
