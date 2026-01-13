@@ -1,34 +1,26 @@
 #!/usr/bin/env python3
 """
-Seed script to populate the members table from JSON export or White Rabbit API.
+Seed script to populate the members table from the White Rabbit API.
 
 Usage:
     cd backend
     source venv/bin/activate
 
-    # From file (default behavior)
-    python -m app.scripts.seed_members [--file path/to/data.json] [--clear]
-
-    # From White Rabbit API
-    python -m app.scripts.seed_members --from-api [--clear]
+    # Fetch from API
+    python -m app.scripts.seed_members [--clear]
 
     # Dry run (preview without committing)
-    python -m app.scripts.seed_members --from-api --dry-run
+    python -m app.scripts.seed_members --dry-run
 
 Options:
-    --file      Path to the JSON file (default: data/member-data-export-*.json)
-    --from-api  Fetch member data from White Rabbit API instead of file
     --clear     Clear existing members before seeding
     --dry-run   Preview changes without committing to database
 """
 
 import argparse
 import asyncio
-import json
 import sys
-from glob import glob
 from pathlib import Path
-from uuid import UUID
 
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,7 +40,7 @@ async def seed_members(
     dry_run: bool = False,
 ) -> tuple[int, int, int]:
     """
-    Seed members from JSON data.
+    Seed members from API data.
 
     Args:
         session: Database session.
@@ -83,9 +75,15 @@ async def seed_members(
 
     for record in data:
         try:
-            profile_id = UUID(record["profile_id"])
-            clerk_user_id = record["clerk_user_id"]
-            email = record["clerk_email"]
+            # Handle both camelCase (API) and snake_case field names
+            profile_id = record.get("profile_id") or record.get("profileId")
+            clerk_user_id = record.get("clerk_user_id") or record.get("clerkUserId")
+            email = record.get("clerk_email") or record.get("clerkEmail") or record.get("email")
+
+            if not profile_id or not email:
+                print(f"Skipping record with missing profile_id or email: {record}")
+                skipped += 1
+                continue
 
             # Skip duplicates by email within the source data
             if email in seen_emails:
@@ -108,21 +106,21 @@ async def seed_members(
                 "profile_id": profile_id,
                 "clerk_user_id": clerk_user_id,
                 "email": email,
-                "first_name": normalize_string(record.get("first_name")),
-                "last_name": normalize_string(record.get("last_name")),
+                "first_name": normalize_string(record.get("first_name") or record.get("firstName")),
+                "last_name": normalize_string(record.get("last_name") or record.get("lastName")),
                 "bio": normalize_string(record.get("bio")),
                 "company": normalize_string(record.get("company")),
                 "role": normalize_string(record.get("role")),
                 "website": normalize_string(record.get("website")),
                 "location": normalize_string(record.get("location")),
-                "membership_status": record.get("membership_status", "free"),
-                "is_public": record.get("is_public", True),
+                "membership_status": record.get("membership_status") or record.get("membershipStatus") or "free",
+                "is_public": record.get("is_public") if record.get("is_public") is not None else record.get("isPublic", True),
                 "urls": normalize_list(record.get("urls")),
                 "roles": normalize_list(record.get("roles")),
-                "prompt_responses": normalize_list(record.get("prompt_responses")),
+                "prompt_responses": normalize_list(record.get("prompt_responses") or record.get("promptResponses")),
                 "skills": normalize_list(record.get("skills")),
                 "interests": normalize_list(record.get("interests")),
-                "all_traits": normalize_list(record.get("all_traits")),
+                "all_traits": normalize_list(record.get("all_traits") or record.get("allTraits")),
             }
 
             if existing_member:
@@ -135,8 +133,9 @@ async def seed_members(
                 member = Member(**member_data)
 
                 # Handle created_at/updated_at from source if available
-                if record.get("created_at"):
-                    parsed_created = parse_datetime(record["created_at"])
+                created_at_val = record.get("created_at") or record.get("createdAt")
+                if created_at_val:
+                    parsed_created = parse_datetime(created_at_val)
                     if parsed_created:
                         member.created_at = parsed_created
 
@@ -193,18 +192,7 @@ async def fetch_from_api() -> list[dict]:
 
 async def main():
     parser = argparse.ArgumentParser(
-        description="Seed members from JSON export or White Rabbit API"
-    )
-    parser.add_argument(
-        "--file",
-        type=str,
-        help="Path to JSON file (default: latest in data/)",
-    )
-    parser.add_argument(
-        "--from-api",
-        action="store_true",
-        dest="from_api",
-        help="Fetch member data from White Rabbit API instead of file",
+        description="Seed members from White Rabbit API"
     )
     parser.add_argument(
         "--clear",
@@ -219,36 +207,7 @@ async def main():
     )
     args = parser.parse_args()
 
-    # Validate arguments
-    if args.from_api and args.file:
-        print("Error: Cannot use both --from-api and --file")
-        sys.exit(1)
-
-    # Get data from API or file
-    if args.from_api:
-        data = await fetch_from_api()
-    else:
-        # Find the JSON file
-        if args.file:
-            json_path = Path(args.file)
-        else:
-            # Find the most recent export file in data/seeds/
-            data_dir = Path(__file__).parent.parent.parent / "data" / "seeds"
-            json_files = sorted(glob(str(data_dir / "member-data-export-*.json")))
-            if not json_files:
-                print("No member data export files found in data/seeds/ directory")
-                sys.exit(1)
-            json_path = Path(json_files[-1])  # Most recent by filename
-
-        if not json_path.exists():
-            print(f"File not found: {json_path}")
-            sys.exit(1)
-
-        print(f"Loading data from: {json_path}")
-
-        with open(json_path, "r") as f:
-            data = json.load(f)
-
+    data = await fetch_from_api()
     print(f"Found {len(data)} records to process")
 
     async with AsyncSessionLocal() as session:
