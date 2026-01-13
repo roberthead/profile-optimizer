@@ -4,6 +4,7 @@ import { Home } from './pages/Home'
 import { MembersList } from './pages/MembersList'
 import { MemberDetail } from './pages/MemberDetail'
 import { Questions } from './pages/Questions'
+import { Patterns } from './pages/Patterns'
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
           <Route path="/members" element={<MembersList />} />
           <Route path="/members/:id" element={<MemberDetail />} />
           <Route path="/questions" element={<Questions />} />
+          <Route path="/patterns" element={<Patterns />} />
         </Routes>
       </Layout>
     </BrowserRouter>
