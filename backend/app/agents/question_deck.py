@@ -11,8 +11,10 @@ from app.core.config import settings
 from app.tools.question_tools import (
     get_community_profile_analysis,
     get_member_gaps,
+    get_active_patterns,
     GET_COMMUNITY_ANALYSIS_TOOL,
     GET_MEMBER_GAPS_TOOL,
+    GET_ACTIVE_PATTERNS_TOOL,
     SAVE_QUESTION_DECK_TOOL,
 )
 
@@ -89,7 +91,26 @@ You will receive FULL PROFILE DATA for all community members. Use this rich cont
 
 IMPORTANT: Avoid generic questions like "What are your hobbies?" - instead, craft questions informed by what you see in the actual profiles. For example, if you notice many members are entrepreneurs, ask about the specific challenges of building something in a small town.
 
-When generating for a specific member, personalize based on their existing profile and gaps."""
+When generating for a specific member, personalize based on their existing profile and gaps.
+
+## Pattern-Informed Question Generation
+
+You have access to DISCOVERED COMMUNITY PATTERNS - these are insights the pattern finder has already identified about the community (skill clusters, interest themes, collaboration opportunities, etc.).
+
+Each pattern includes:
+- **name/description**: What the pattern represents
+- **category**: Type of pattern (skill_cluster, interest_theme, collaboration_opportunity, community_strength, cross_domain)
+- **member_count**: How prevalent this pattern is
+- **evidence**: Supporting data like skill/interest frequencies
+- **question_prompts**: Pre-suggested questions to explore this pattern
+
+When patterns are available, use them to:
+1. **Explore pattern depths**: Generate questions that help understand WHY these patterns exist and what they mean to members
+2. **Surface hidden connections**: Create questions that could reveal additional members who fit existing patterns
+3. **Bridge patterns**: Ask questions that might connect members across different patterns
+4. **Validate patterns**: Design questions that test whether patterns hold deeper meaning or are surface-level
+
+IMPORTANT: Patterns are a starting point, not a constraint. Use them as inspiration but also generate novel questions that go beyond the pre-suggested prompts. The goal is questions that feel both pattern-aware AND fresh."""
 
 
 class QuestionDeckAgent:
@@ -135,16 +156,22 @@ Generate questions that specifically serve this purpose. The description above s
 
         user_message = f"""Please generate a question deck for the White Rabbit community.
 
-First, use the get_community_profile_analysis tool to understand the current state of member profiles across the community.
+First, gather context by using these tools:
+1. get_community_profile_analysis - to understand the current state of member profiles
+2. get_active_patterns - to retrieve discovered community patterns (skill clusters, interest themes, collaboration opportunities, etc.)
 {custom_purpose}
 Then, generate approximately {num_questions} insightful questions that:
 1. Help fill common gaps you discover in the analysis
 2. Surface interesting insights about members that aren't captured in standard profile fields
-3. Balance across difficulty levels and categories{category_guidance}
+3. Explore and deepen discovered community patterns
+4. Create opportunities for pattern-related members to connect
+5. Balance across difficulty levels and categories{category_guidance}
+
+When incorporating patterns, use them as inspiration to craft questions that feel both pattern-aware AND fresh. Don't just repeat the pre-suggested question_prompts from patterns - build on them creatively.
 
 After generating the questions, use save_question_deck to persist them with:
 - Name: "{deck_name}"
-- Description: {f'"{description}"' if description else 'A description explaining the deck\'s purpose and what analysis informed it'}
+- Description: {f'"{description}"' if description else 'A description explaining the deck\'s purpose, what analysis informed it, and which patterns it explores'}
 - The complete list of questions"""
 
         return await self._execute_with_tools(user_message)
@@ -174,16 +201,20 @@ After generating the questions, use save_question_deck to persist them with:
 
         user_message = f"""Please generate a personalized question deck for member {member_name} (ID: {member_id}).
 
-First, use get_member_gaps to understand their current profile state and identify opportunities.
+First, gather context by using these tools:
+1. get_member_gaps - to understand their current profile state and identify opportunities
+2. get_active_patterns - to see which community patterns they might relate to or could be connected with
 
 Then, generate approximately {num_questions} questions tailored to:
 1. Fill their specific profile gaps
 2. Draw out interesting aspects of who they are
 3. Build on what's already in their profile (use it as context, not repetition)
+4. Explore their connection to discovered community patterns
+5. Help them see potential collaborations with other pattern-related members
 
 After generating the questions, use save_question_deck to persist them with:
 - Name: "Personal Discovery - {member_name}"
-- A description explaining what gaps and opportunities this deck addresses
+- A description explaining what gaps, opportunities, and pattern connections this deck addresses
 - The complete list of questions
 - member_id: {member_id}"""
 
@@ -253,7 +284,7 @@ Use save_question_deck to save the refined deck with:
 
     async def _execute_with_tools(self, user_message: str) -> dict[str, Any]:
         """Execute a conversation with tool use."""
-        tools = [GET_COMMUNITY_ANALYSIS_TOOL, GET_MEMBER_GAPS_TOOL, SAVE_QUESTION_DECK_TOOL]
+        tools = [GET_COMMUNITY_ANALYSIS_TOOL, GET_MEMBER_GAPS_TOOL, GET_ACTIVE_PATTERNS_TOOL, SAVE_QUESTION_DECK_TOOL]
         messages = [{"role": "user", "content": user_message}]
 
         result = {
@@ -322,6 +353,11 @@ Use save_question_deck to save the refined deck with:
             member_id = tool_input.get("member_id")
             gaps = await get_member_gaps(self.db, member_id)
             return gaps
+
+        elif tool_name == "get_active_patterns":
+            patterns = await get_active_patterns(self.db)
+            result["patterns_context"] = patterns
+            return patterns
 
         elif tool_name == "save_question_deck":
             deck = await self._save_deck(tool_input)

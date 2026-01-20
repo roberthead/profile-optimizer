@@ -347,6 +347,62 @@ async def save_pattern(db: AsyncSession, pattern_data: dict[str, Any]) -> dict[s
     }
 
 
+async def get_active_patterns(db: AsyncSession) -> dict[str, Any]:
+    """
+    Retrieve all active patterns discovered in the community.
+
+    Returns patterns with their descriptions, categories, member counts,
+    evidence, and question prompts that can inform question generation.
+    """
+    result = await db.execute(
+        select(Pattern).where(Pattern.is_active == True).order_by(Pattern.member_count.desc())
+    )
+    patterns = result.scalars().all()
+
+    return {
+        "total_patterns": len(patterns),
+        "patterns": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "description": p.description,
+                "category": p.category.value,
+                "member_count": p.member_count,
+                "related_member_ids": p.related_member_ids or [],
+                "evidence": p.evidence or {},
+                "question_prompts": p.question_prompts or [],
+            }
+            for p in patterns
+        ],
+    }
+
+
+GET_ACTIVE_PATTERNS_TOOL = {
+    "name": "get_active_patterns",
+    "description": """Retrieve all active community patterns discovered by the pattern finder.
+
+Each pattern includes:
+- name: Short identifier (e.g., 'Creative Technologists')
+- description: What this pattern reveals about the community
+- category: One of skill_cluster, interest_theme, collaboration_opportunity, community_strength, cross_domain
+- member_count: How many members exhibit this pattern
+- related_member_ids: Which specific members relate to this pattern
+- evidence: Supporting data like skill/interest frequencies
+- question_prompts: 2-3 suggested questions to explore the pattern further
+
+Use these patterns to:
+1. Generate questions that explore discovered community themes
+2. Create questions that could surface additional members who fit patterns
+3. Design questions that deepen understanding of why these patterns exist
+4. Craft questions that facilitate connections between pattern-related members""",
+    "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
+}
+
+
 SAVE_PATTERN_TOOL = {
     "name": "save_pattern",
     "description": "Save a discovered pattern to the database. If a pattern with the same name exists, it will be updated.",
