@@ -10,10 +10,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
 
   const navItems = [
-    { path: '/', label: 'Home', icon: Home },
-    { path: '/members', label: 'Members', icon: Users },
-    { path: '/questions', label: 'Questions', icon: HelpCircle },
-    { path: '/patterns', label: 'Patterns', icon: Sparkles },
+    { path: "/", label: "Home", icon: Home },
+    { path: "/members", label: "Members", icon: Users },
+    { path: "/patterns", label: "Patterns", icon: Sparkles },
+    { path: "/questions", label: "Questions", icon: HelpCircle },
   ];
 
   return (
