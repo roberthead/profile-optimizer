@@ -35,6 +35,18 @@ interface PatternDiscoveryResponse {
   response_text: string;
 }
 
+interface MemberSummary {
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+}
+
+interface MembersResponse {
+  members: MemberSummary[];
+  total: number;
+}
+
 const API_BASE = 'http://localhost:8000/api/v1';
 
 async function fetchPatterns(): Promise<Pattern[]> {
@@ -56,6 +68,12 @@ async function refreshPatterns(): Promise<PatternDiscoveryResponse> {
     method: 'POST',
   });
   if (!response.ok) throw new Error('Failed to refresh patterns');
+  return response.json();
+}
+
+async function fetchMembers(): Promise<MembersResponse> {
+  const response = await fetch(`${API_BASE}/members?per_page=200`);
+  if (!response.ok) throw new Error('Failed to fetch members');
   return response.json();
 }
 
@@ -83,9 +101,24 @@ const categoryIcons: Record<string, React.FC<{ className?: string }>> = {
   cross_domain: Sparkles,
 };
 
-const PatternCard: React.FC<{ pattern: Pattern }> = ({ pattern }) => {
+const PatternCard: React.FC<{ pattern: Pattern; membersMap: Map<number, MemberSummary> }> = ({
+  pattern,
+  membersMap,
+}) => {
   const [expanded, setExpanded] = useState(false);
+  const [membersExpanded, setMembersExpanded] = useState(false);
   const Icon = categoryIcons[pattern.category] || Sparkles;
+
+  const patternMembers = pattern.related_member_ids
+    .map((id) => membersMap.get(id))
+    .filter((m): m is MemberSummary => m !== undefined);
+
+  const getMemberDisplayName = (member: MemberSummary) => {
+    if (member.first_name || member.last_name) {
+      return [member.first_name, member.last_name].filter(Boolean).join(' ');
+    }
+    return member.email;
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -154,6 +187,35 @@ const PatternCard: React.FC<{ pattern: Pattern }> = ({ pattern }) => {
             </div>
           )}
 
+          {patternMembers.length > 0 && (
+            <div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMembersExpanded(!membersExpanded);
+                }}
+                className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+              >
+                <Users className="w-4 h-4" />
+                Members ({patternMembers.length})
+                {membersExpanded ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+              </button>
+              {membersExpanded && (
+                <ul className="mt-2 space-y-1 pl-6">
+                  {patternMembers.map((member) => (
+                    <li key={member.id} className="text-sm text-gray-600">
+                      {getMemberDisplayName(member)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           <div className="text-xs text-gray-400">
             Discovered {new Date(pattern.created_at).toLocaleDateString()}
           </div>
@@ -171,6 +233,19 @@ export const Patterns: React.FC = () => {
     queryKey: ['patterns'],
     queryFn: fetchPatterns,
   });
+
+  const { data: membersData } = useQuery({
+    queryKey: ['members'],
+    queryFn: fetchMembers,
+  });
+
+  const membersMap = React.useMemo(() => {
+    const map = new Map<number, MemberSummary>();
+    membersData?.members.forEach((member) => {
+      map.set(member.id, member);
+    });
+    return map;
+  }, [membersData]);
 
   const discoverMutation = useMutation({
     mutationFn: discoverPatterns,
@@ -285,7 +360,7 @@ export const Patterns: React.FC = () => {
       ) : patterns && patterns.length > 0 ? (
         <div className="space-y-4">
           {patterns.map((pattern) => (
-            <PatternCard key={pattern.id} pattern={pattern} />
+            <PatternCard key={pattern.id} pattern={pattern} membersMap={membersMap} />
           ))}
         </div>
       ) : (
