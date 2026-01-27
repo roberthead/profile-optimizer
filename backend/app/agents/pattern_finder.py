@@ -49,7 +49,7 @@ For each pattern you discover, you MUST call save_pattern with:
 - **description**: 2-3 sentences explaining what this pattern reveals and why it matters
 - **category**: One of the five categories above
 - **member_count**: How many members exhibit this pattern
-- **related_member_ids**: Array of member IDs who exhibit this pattern (use the IDs from the profile data)
+- **related_member_ids**: CRITICAL - Array of numeric member IDs (the "id" field from member_profiles) who exhibit this pattern. Example: [1, 5, 12]. This enables the UI to show member names.
 - **evidence**: Object with supporting data (skill names, interest names, frequencies)
 - **question_prompts**: 2-3 questions that could explore this pattern further
 
@@ -81,9 +81,11 @@ class PatternFinderAgent:
         """
         user_message = """Please analyze the White Rabbit community and discover meaningful patterns.
 
-First, use the get_community_profile_analysis tool to get full data on all community members including their skills, interests, traits, and profiles.
+First, use the get_community_profile_analysis tool to get full data on all community members including their skills, interests, traits, and profiles. Note: Each member profile includes an "id" field - you MUST use these IDs when saving patterns.
 
 Then, analyze this data to discover 5-10 high-quality patterns. For each pattern you discover, use the save_pattern tool to persist it.
+
+IMPORTANT: When calling save_pattern, you MUST include related_member_ids as an array of the numeric member IDs (from the "id" field in member_profiles) for members who exhibit the pattern. This is required for the UI to display member names.
 
 Focus on patterns that are:
 - Actionable (could lead to introductions or events)

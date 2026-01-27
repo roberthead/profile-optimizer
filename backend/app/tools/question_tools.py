@@ -429,7 +429,7 @@ SAVE_PATTERN_TOOL = {
             "related_member_ids": {
                 "type": "array",
                 "items": {"type": "integer"},
-                "description": "IDs of members who exhibit this pattern"
+                "description": "REQUIRED: The numeric 'id' values from member_profiles for members who exhibit this pattern. Example: [1, 5, 12, 23]"
             },
             "evidence": {
                 "type": "object",
@@ -441,6 +441,6 @@ SAVE_PATTERN_TOOL = {
                 "description": "2-3 questions that could explore this pattern further"
             }
         },
-        "required": ["name", "description", "category", "member_count"]
+        "required": ["name", "description", "category", "member_count", "related_member_ids"]
     }
 }

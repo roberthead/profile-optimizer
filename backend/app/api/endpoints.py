@@ -237,7 +237,7 @@ class MembersListResponse(BaseModel):
 @router.get("/members", response_model=MembersListResponse)
 async def list_members(
     page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100),
+    per_page: int = Query(20, ge=1, le=500),
     search: Optional[str] = None,
     membership_status: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
