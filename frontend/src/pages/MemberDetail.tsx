@@ -11,6 +11,11 @@ import {
   User,
   Tag,
   MessageSquare,
+  Sparkles,
+  Layers,
+  Lightbulb,
+  Network,
+  Zap,
 } from 'lucide-react';
 
 interface MemberDetailData {
@@ -35,6 +40,20 @@ interface MemberDetailData {
   all_traits: string[];
 }
 
+interface Pattern {
+  id: number;
+  name: string;
+  description: string;
+  category: string;
+  member_count: number;
+  related_member_ids: number[];
+  evidence: Record<string, unknown> | null;
+  question_prompts: string[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 async function fetchMember(id: string): Promise<MemberDetailData> {
   const response = await fetch(`http://localhost:8000/api/v1/members/${id}`);
 
@@ -47,6 +66,28 @@ async function fetchMember(id: string): Promise<MemberDetailData> {
 
   return response.json();
 }
+
+async function fetchPatterns(): Promise<Pattern[]> {
+  const response = await fetch('http://localhost:8000/api/v1/patterns');
+  if (!response.ok) throw new Error('Failed to fetch patterns');
+  return response.json();
+}
+
+const categoryColors: Record<string, string> = {
+  skill_cluster: 'bg-blue-100 text-blue-800 hover:bg-blue-200',
+  interest_theme: 'bg-purple-100 text-purple-800 hover:bg-purple-200',
+  collaboration_opportunity: 'bg-green-100 text-green-800 hover:bg-green-200',
+  community_strength: 'bg-orange-100 text-orange-800 hover:bg-orange-200',
+  cross_domain: 'bg-pink-100 text-pink-800 hover:bg-pink-200',
+};
+
+const categoryIcons: Record<string, React.FC<{ className?: string }>> = {
+  skill_cluster: Layers,
+  interest_theme: Lightbulb,
+  collaboration_opportunity: Network,
+  community_strength: Zap,
+  cross_domain: Sparkles,
+};
 
 function getMembershipBadgeColor(status: string): string {
   switch (status) {
@@ -95,6 +136,16 @@ export const MemberDetail: React.FC = () => {
     queryFn: () => fetchMember(id!),
     enabled: !!id,
   });
+
+  const { data: patterns } = useQuery({
+    queryKey: ['patterns'],
+    queryFn: fetchPatterns,
+  });
+
+  // Filter patterns that include this member
+  const memberPatterns = member && patterns
+    ? patterns.filter((pattern) => pattern.related_member_ids.includes(member.id))
+    : [];
 
   if (isLoading) {
     return (
@@ -254,6 +305,29 @@ export const MemberDetail: React.FC = () => {
                 <p className="text-gray-700 whitespace-pre-wrap">{response}</p>
               </div>
             ))}
+          </div>
+        </Section>
+      )}
+
+      {/* Community Patterns */}
+      {memberPatterns.length > 0 && (
+        <Section title="Community Patterns" icon={<Sparkles className="w-5 h-5" />}>
+          <div className="flex flex-wrap gap-2">
+            {memberPatterns.map((pattern) => {
+              const Icon = categoryIcons[pattern.category] || Sparkles;
+              return (
+                <Link
+                  key={pattern.id}
+                  to="/patterns"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                    categoryColors[pattern.category] || 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {pattern.name}
+                </Link>
+              );
+            })}
           </div>
         </Section>
       )}
