@@ -8,6 +8,7 @@ import anthropic
 from app.core.config import settings
 from app.tools.question_tools import (
     get_community_profile_analysis,
+    get_active_patterns,
     save_pattern,
     GET_COMMUNITY_ANALYSIS_TOOL,
     SAVE_PATTERN_TOOL,
@@ -98,24 +99,45 @@ After saving all patterns, summarize what you discovered."""
 
     async def refresh_patterns(self) -> dict[str, Any]:
         """
-        Re-analyze all data and refresh patterns.
+        Re-analyze all data and update existing patterns.
 
-        This deactivates old patterns and runs a fresh discovery.
+        This preserves existing patterns and updates them with fresh member data,
+        rather than wiping and starting fresh.
 
         Returns:
             Dict with patterns_found count and response text.
         """
-        # Deactivate existing patterns
-        from sqlalchemy import update
-        from app.models import Pattern
+        # Fetch existing patterns to pass to the LLM
+        existing_patterns = await get_active_patterns(self.db)
 
-        await self.db.execute(
-            update(Pattern).values(is_active=False)
-        )
-        await self.db.commit()
+        # Build context about existing patterns
+        pattern_context = ""
+        if existing_patterns["total_patterns"] > 0:
+            pattern_names = [p["name"] for p in existing_patterns["patterns"]]
+            pattern_context = f"""
 
-        # Run fresh discovery
-        return await self.discover_patterns()
+EXISTING PATTERNS TO UPDATE:
+The following {existing_patterns['total_patterns']} patterns already exist. When you find members matching these themes, UPDATE the existing pattern by using the EXACT SAME NAME:
+{json.dumps(pattern_names, indent=2)}
+
+For each existing pattern, re-evaluate which members should be included based on current profile data. You may also create new patterns if you discover themes not covered by existing ones."""
+
+        user_message = f"""Please analyze the White Rabbit community and update the community patterns.
+
+First, use the get_community_profile_analysis tool to get full data on all community members including their skills, interests, traits, and profiles. Note: Each member profile includes an "id" field - you MUST use these IDs when saving patterns.
+{pattern_context}
+Then, for each pattern (existing or new), use the save_pattern tool to persist it.
+
+IMPORTANT: When calling save_pattern, you MUST include related_member_ids as an array of the numeric member IDs (from the "id" field in member_profiles) for members who exhibit the pattern. Be INCLUSIVE - include all members who reasonably fit the pattern, not just the most obvious examples.
+
+Focus on patterns that are:
+- Actionable (could lead to introductions or events)
+- Non-obvious (go beyond simple frequency counts)
+- Community-building (strengthen member connections)
+
+After saving all patterns, summarize what you updated or discovered."""
+
+        return await self._execute_with_tools(user_message)
 
     async def _execute_with_tools(self, user_message: str) -> dict[str, Any]:
         """Execute a conversation with tool use."""
