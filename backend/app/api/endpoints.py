@@ -350,6 +350,16 @@ class RefineDeckRequest(BaseModel):
     feedback: str
 
 
+class ShareQuestionRequest(BaseModel):
+    question_id: int
+    notes: Optional[str] = None
+
+
+class ShareQuestionResponse(BaseModel):
+    success: bool
+    message: str
+
+
 class QuestionModel(BaseModel):
     id: int
     question_text: str
@@ -622,6 +632,49 @@ async def get_question_queue(
         raise HTTPException(status_code=404, detail="Member not found")
 
     return QuestionQueueResponse(**result)
+@router.post("/questions/share", response_model=ShareQuestionResponse)
+async def share_question(
+    request: ShareQuestionRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Share a question with the White Rabbit website."""
+    result = await db.execute(
+        select(Question).where(Question.id == request.question_id)
+    )
+    question = result.scalar_one_or_none()
+
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    payload = {
+        "questionText": question.question_text,
+        "description": question.purpose,
+        "questionType": question.question_type.value,
+        "source": "profile_optimizer",
+        "category": question.category.value,
+        "displayOrder": question.order_index,
+    }
+    if request.notes:
+        payload["notes"] = request.notes
+
+    try:
+        client = WhiteRabbitClient()
+        await client.post_question(payload)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Configuration error: {str(e)}. Make sure WHITE_RABBIT_API_KEY is set."
+        )
+    except WhiteRabbitAPIError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to post to White Rabbit API: {e.message}"
+        )
+
+    return ShareQuestionResponse(
+        success=True,
+        message=f"Question shared with White Rabbit HQ"
+    )
 
 
 # Admin endpoints

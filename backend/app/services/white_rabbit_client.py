@@ -281,6 +281,25 @@ class WhiteRabbitClient:
             return response.get("answers", [])
         return response if isinstance(response, list) else []
 
+    async def post_question(self, question_data: dict[str, Any]) -> dict[str, Any]:
+        """
+        Post a question to the White Rabbit website.
+
+        Args:
+            question_data: Question payload with camelCase keys matching the
+                White Rabbit API format (questionText, description, questionType,
+                source, category, displayOrder, notes).
+
+        Returns:
+            Parsed JSON response from the API.
+
+        Raises:
+            WhiteRabbitAuthError: If authentication fails.
+            WhiteRabbitAPIError: For other API errors.
+        """
+        logger.info(f"Posting question to White Rabbit: {question_data.get('questionText', '')[:50]}")
+        return await self._request("POST", "/profile/questions", json=question_data)
+
     async def health_check(self) -> bool:
         """
         Verify API connectivity and authentication.

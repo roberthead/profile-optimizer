@@ -12,6 +12,9 @@ import {
   Lightbulb,
   Target,
   Send,
+  ExternalLink,
+  Check,
+  AlertCircle,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -110,6 +113,22 @@ async function refineDeck(params: {
   return response.json();
 }
 
+async function shareQuestion(params: {
+  question_id: number;
+  notes?: string;
+}): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE}/questions/share`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to share question' }));
+    throw new Error(error.detail || 'Failed to share question');
+  }
+  return response.json();
+}
+
 const categoryColors: Record<string, string> = {
   origin_story: 'bg-purple-100 text-purple-800',
   creative_spark: 'bg-orange-100 text-orange-800',
@@ -161,10 +180,20 @@ const DifficultyBadge: React.FC<{ level: number }> = ({ level }) => {
   );
 };
 
-const QuestionCard: React.FC<{ question: Question; expanded: boolean; onToggle: () => void }> = ({
+const QuestionCard: React.FC<{
+  question: Question;
+  expanded: boolean;
+  onToggle: () => void;
+  onShare: (questionId: number) => void;
+  isSharing: boolean;
+  shareResult: { success: boolean; message: string } | null;
+}> = ({
   question,
   expanded,
   onToggle,
+  onShare,
+  isSharing,
+  shareResult,
 }) => {
   return (
     <div className="border border-gray-200 rounded-lg bg-white">
@@ -255,6 +284,27 @@ const QuestionCard: React.FC<{ question: Question; expanded: boolean; onToggle: 
               </div>
             </div>
           )}
+
+          <div className="pt-2 border-t border-gray-100 flex items-center gap-3">
+            <button
+              onClick={() => onShare(question.id)}
+              disabled={isSharing}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {isSharing ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <ExternalLink className="w-4 h-4" />
+              )}
+              Share with HQ
+            </button>
+            {shareResult && (
+              <span className={`flex items-center gap-1 text-sm ${shareResult.success ? 'text-green-600' : 'text-red-600'}`}>
+                {shareResult.success ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                {shareResult.message}
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -268,6 +318,29 @@ const DeckCard: React.FC<{
 }> = ({ deck, onRefine, isRefining }) => {
   const [expanded, setExpanded] = useState(false);
   const [expandedQuestions, setExpandedQuestions] = useState<Set<number>>(new Set());
+  const [sharingQuestionId, setSharingQuestionId] = useState<number | null>(null);
+  const [shareNotes, setShareNotes] = useState('');
+  const [shareResults, setShareResults] = useState<Record<number, { success: boolean; message: string }>>({});
+
+  const shareMutation = useMutation({
+    mutationFn: shareQuestion,
+    onSuccess: (_data, variables) => {
+      setShareResults((prev) => ({
+        ...prev,
+        [variables.question_id]: { success: true, message: 'Shared!' },
+      }));
+      setSharingQuestionId(null);
+      setShareNotes('');
+    },
+    onError: (error: Error, variables) => {
+      setShareResults((prev) => ({
+        ...prev,
+        [variables.question_id]: { success: false, message: error.message },
+      }));
+      setSharingQuestionId(null);
+      setShareNotes('');
+    },
+  });
 
   const toggleQuestion = (id: number) => {
     setExpandedQuestions((prev) => {
@@ -281,6 +354,19 @@ const DeckCard: React.FC<{
     });
   };
 
+  const handleShareConfirm = () => {
+    if (sharingQuestionId) {
+      shareMutation.mutate({
+        question_id: sharingQuestionId,
+        notes: shareNotes.trim() || undefined,
+      });
+    }
+  };
+
+  const sharingQuestion = sharingQuestionId
+    ? deck.questions.find((q) => q.id === sharingQuestionId)
+    : null;
+
   const categoryCounts = deck.questions.reduce((acc, q) => {
     acc[q.category] = (acc[q.category] || 0) + 1;
     return acc;
@@ -288,6 +374,61 @@ const DeckCard: React.FC<{
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      {/* Share with HQ confirmation modal */}
+      {sharingQuestion && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <ExternalLink className="w-5 h-5 text-indigo-600" />
+              Share with HQ
+            </h3>
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+              <p className="text-sm font-medium text-gray-900">{sharingQuestion.question_text}</p>
+              <p className="text-xs text-gray-500 mt-1">{categoryLabels[sharingQuestion.category] || sharingQuestion.category} &middot; {questionTypeLabels[sharingQuestion.question_type] || sharingQuestion.question_type}</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Notes <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <textarea
+                value={shareNotes}
+                onChange={(e) => setShareNotes(e.target.value)}
+                placeholder="e.g., specific members who should receive this question..."
+                className="w-full h-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+              />
+            </div>
+            <div className="flex justify-end gap-3 mt-4">
+              <button
+                onClick={() => {
+                  setSharingQuestionId(null);
+                  setShareNotes('');
+                }}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleShareConfirm}
+                disabled={shareMutation.isPending}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                {shareMutation.isPending ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Sharing...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Share
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="p-4 border-b border-gray-100">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
@@ -346,6 +487,9 @@ const DeckCard: React.FC<{
               question={question}
               expanded={expandedQuestions.has(question.id)}
               onToggle={() => toggleQuestion(question.id)}
+              onShare={(id) => setSharingQuestionId(id)}
+              isSharing={shareMutation.isPending && sharingQuestionId === question.id}
+              shareResult={shareResults[question.id] || null}
             />
           ))}
         </div>
