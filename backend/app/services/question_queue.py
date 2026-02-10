@@ -20,6 +20,7 @@ from app.models import (
 @dataclass
 class ScoredQuestion:
     """A question with its computed score and selection metadata."""
+
     question_id: int
     question_text: str
     question_type: str
@@ -70,7 +71,10 @@ class QuestionQueueBuilder:
         questions = await self._load_available_questions(answered_ids)
 
         if not questions:
-            member_name = f"{member.first_name or ''} {member.last_name or ''}".strip() or member.email
+            member_name = (
+                f"{member.first_name or ''} {member.last_name or ''}".strip()
+                or member.email
+            )
             return {
                 "member_id": member_id,
                 "member_name": member_name,
@@ -103,10 +107,14 @@ class QuestionQueueBuilder:
             # Compute affinity for patterns the member is NOT in
             evidence = pattern.evidence or {}
             evidence_skills = set(
-                s.lower() for s in (evidence.get("skills") or evidence.get("skill_names") or [])
+                s.lower()
+                for s in (evidence.get("skills") or evidence.get("skill_names") or [])
             )
             evidence_interests = set(
-                i.lower() for i in (evidence.get("interests") or evidence.get("interest_names") or [])
+                i.lower()
+                for i in (
+                    evidence.get("interests") or evidence.get("interest_names") or []
+                )
             )
 
             if not evidence_skills and not evidence_interests:
@@ -114,11 +122,13 @@ class QuestionQueueBuilder:
 
             skill_overlap = (
                 len(member_skills & evidence_skills) / len(evidence_skills)
-                if evidence_skills else 0.0
+                if evidence_skills
+                else 0.0
             )
             interest_overlap = (
                 len(member_interests & evidence_interests) / len(evidence_interests)
-                if evidence_interests else 0.0
+                if evidence_interests
+                else 0.0
             )
             affinity = 0.6 * skill_overlap + 0.4 * interest_overlap
 
@@ -158,12 +168,14 @@ class QuestionQueueBuilder:
                     p = pattern_lookup.get(pid)
                     pattern_name = p.name if p else f"Pattern {pid}"
                     reasons.append(f"Probes '{pattern_name}' (affinity {affinity:.2f})")
-                    sq.related_patterns.append({
-                        "id": pid,
-                        "name": pattern_name,
-                        "relationship": "probe",
-                        "affinity": round(affinity, 2),
-                    })
+                    sq.related_patterns.append(
+                        {
+                            "id": pid,
+                            "name": pattern_name,
+                            "relationship": "probe",
+                            "affinity": round(affinity, 2),
+                        }
+                    )
 
             # Pattern Deepen: question deepens pattern member IS in
             deepened_ids = q_pattern_ids & set(member_pattern_ids)
@@ -174,11 +186,13 @@ class QuestionQueueBuilder:
                     p = pattern_lookup.get(pid)
                     pattern_name = p.name if p else f"Pattern {pid}"
                     reasons.append(f"Deepens '{pattern_name}'")
-                    sq.related_patterns.append({
-                        "id": pid,
-                        "name": pattern_name,
-                        "relationship": "deepen",
-                    })
+                    sq.related_patterns.append(
+                        {
+                            "id": pid,
+                            "name": pattern_name,
+                            "relationship": "deepen",
+                        }
+                    )
 
             # Profile Gap: question targets empty fields
             matching_gaps = q_profile_fields & gap_fields
@@ -212,10 +226,15 @@ class QuestionQueueBuilder:
         top = scored[:10]
         sequenced = self._sequence(top)
 
-        member_name = f"{member.first_name or ''} {member.last_name or ''}".strip() or member.email
+        member_name = (
+            f"{member.first_name or ''} {member.last_name or ''}".strip()
+            or member.email
+        )
         high_affinity = [
             {"id": pid, "name": pattern_lookup[pid].name, "affinity": round(aff, 2)}
-            for pid, aff in sorted(pattern_affinities.items(), key=lambda x: x[1], reverse=True)
+            for pid, aff in sorted(
+                pattern_affinities.items(), key=lambda x: x[1], reverse=True
+            )
         ]
 
         return {
@@ -250,15 +269,11 @@ class QuestionQueueBuilder:
     # --- Data loading helpers ---
 
     async def _load_member(self, member_id: int) -> Optional[Member]:
-        result = await self.db.execute(
-            select(Member).where(Member.id == member_id)
-        )
+        result = await self.db.execute(select(Member).where(Member.id == member_id))
         return result.scalar_one_or_none()
 
     async def _load_active_patterns(self) -> list[Pattern]:
-        result = await self.db.execute(
-            select(Pattern).where(Pattern.is_active == True)
-        )
+        result = await self.db.execute(select(Pattern).where(Pattern.is_active == True))
         return list(result.scalars().all())
 
     async def _load_answered_question_ids(self, member_id: int) -> set[int]:
@@ -297,7 +312,9 @@ class QuestionQueueBuilder:
         if not member.interests or len(member.interests) < 1:
             gaps.append({"field": "interests", "label": "Interests (>= 1)"})
         if not member.prompt_responses or len(member.prompt_responses) < 1:
-            gaps.append({"field": "prompt_responses", "label": "Prompt responses (>= 1)"})
+            gaps.append(
+                {"field": "prompt_responses", "label": "Prompt responses (>= 1)"}
+            )
         return gaps
 
     # --- Sequencing ---
@@ -315,7 +332,9 @@ class QuestionQueueBuilder:
         remaining = list(questions)
         result: list[ScoredQuestion] = []
 
-        def pick_best(pool: list[ScoredQuestion], preferred_difficulty: int, preferred_reason: str) -> ScoredQuestion:
+        def pick_best(
+            pool: list[ScoredQuestion], preferred_difficulty: int, preferred_reason: str
+        ) -> ScoredQuestion:
             """Pick the best match from pool, preferring difficulty and reason."""
             if not pool:
                 raise ValueError("Empty pool")

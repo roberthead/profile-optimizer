@@ -9,10 +9,7 @@ from app.agents.profile_evaluation import ProfileEvaluationAgent
 from app.agents.profile_chat import ProfileChatAgent
 from app.agents.question_deck import QuestionDeckAgent
 from app.agents.pattern_finder import PatternFinderAgent
-<<<<<<< HEAD
 from app.services.question_queue import QuestionQueueBuilder
-from app.models import Member, ProfileCompleteness, ConversationHistory, QuestionDeck, Question, SocialLink, Pattern, PatternCategory
-=======
 from app.models import (
     Member,
     ProfileCompleteness,
@@ -22,7 +19,6 @@ from app.models import (
     Pattern,
     PatternCategory,
 )
->>>>>>> f61db06 (Add Makefile with validate target, configure ruff, fix all lint issues)
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
@@ -577,6 +573,7 @@ async def get_deck(deck_id: int, db: AsyncSession = Depends(get_db)):
 
 # Question Queue endpoint
 
+
 class QueuedQuestionPatternModel(BaseModel):
     id: int
     name: str
@@ -626,10 +623,7 @@ class QuestionQueueResponse(BaseModel):
 
 
 @router.get("/questions/queue/{member_id}", response_model=QuestionQueueResponse)
-async def get_question_queue(
-    member_id: int,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_question_queue(member_id: int, db: AsyncSession = Depends(get_db)):
     """Get a scored and sequenced question queue for a member.
 
     Returns the top 10 questions optimized to learn the most about
@@ -642,6 +636,8 @@ async def get_question_queue(
         raise HTTPException(status_code=404, detail="Member not found")
 
     return QuestionQueueResponse(**result)
+
+
 @router.post("/questions/share", response_model=ShareQuestionResponse)
 async def share_question(
     request: ShareQuestionRequest, db: AsyncSession = Depends(get_db)

@@ -297,16 +297,6 @@ SAVE_QUESTION_DECK_TOOL = {
                             "maximum": 3,
                         },
                         "purpose": {"type": "string"},
-<<<<<<< HEAD
-                        "follow_up_prompts": {"type": "array", "items": {"type": "string"}},
-                        "potential_insights": {"type": "array", "items": {"type": "string"}},
-                        "related_profile_fields": {"type": "array", "items": {"type": "string"}},
-                        "related_pattern_ids": {
-                            "type": "array",
-                            "items": {"type": "integer"},
-                            "description": "IDs of patterns this question explores or deepens. Use pattern IDs from get_active_patterns."
-                        }
-=======
                         "follow_up_prompts": {
                             "type": "array",
                             "items": {"type": "string"},
@@ -319,7 +309,11 @@ SAVE_QUESTION_DECK_TOOL = {
                             "type": "array",
                             "items": {"type": "string"},
                         },
->>>>>>> f61db06 (Add Makefile with validate target, configure ruff, fix all lint issues)
+                        "related_pattern_ids": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                            "description": "IDs of patterns this question explores or deepens. Use pattern IDs from get_active_patterns.",
+                        },
                     },
                     "required": [
                         "question_text",
