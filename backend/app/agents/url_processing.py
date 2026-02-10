@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import SocialLink
 import asyncio
+
 
 class UrlProcessingAgent:
     def __init__(self, db: AsyncSession):
@@ -12,7 +12,7 @@ class UrlProcessingAgent:
         """
         # TODO: Fetch social_link, scrape content, save artifact
         print(f"Processing URL for ID: {social_link_id}")
-        await asyncio.sleep(1) # Simulate work
+        await asyncio.sleep(1)  # Simulate work
         pass
 
     async def _scrape_content(self, url: str) -> str:

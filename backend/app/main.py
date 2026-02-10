@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.database import engine, Base
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Create tables (for POC simplicity, use Alembic in prod)
@@ -13,13 +14,15 @@ async def lifespan(app: FastAPI):
     # Shutdown
     await engine.dispose()
 
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 from app.api.endpoints import router as api_router
+
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 # Set all CORS enabled origins
@@ -41,9 +44,11 @@ else:
         allow_headers=["*"],
     )
 
+
 @app.get("/")
 async def root():
     return {"message": "White Rabbit Profile Optimizer API"}
+
 
 @app.get("/health")
 async def health_check():

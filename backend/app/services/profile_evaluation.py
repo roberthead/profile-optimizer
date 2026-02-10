@@ -63,7 +63,9 @@ class ProfileEvaluator:
 
         # Store or update in database
         result = await self.db.execute(
-            select(ProfileCompleteness).where(ProfileCompleteness.member_id == member_id)
+            select(ProfileCompleteness).where(
+                ProfileCompleteness.member_id == member_id
+            )
         )
         profile_completeness = result.scalar_one_or_none()
 
@@ -71,7 +73,7 @@ class ProfileEvaluator:
             profile_completeness.completeness_score = completeness_score
             profile_completeness.missing_fields = {
                 "required": missing_required,
-                "optional": missing_optional
+                "optional": missing_optional,
             }
             profile_completeness.last_calculated = datetime.utcnow()
         else:
@@ -80,9 +82,9 @@ class ProfileEvaluator:
                 completeness_score=completeness_score,
                 missing_fields={
                     "required": missing_required,
-                    "optional": missing_optional
+                    "optional": missing_optional,
                 },
-                last_calculated=datetime.utcnow()
+                last_calculated=datetime.utcnow(),
             )
             self.db.add(profile_completeness)
 
@@ -93,5 +95,5 @@ class ProfileEvaluator:
             "completeness_score": completeness_score,
             "missing_fields": missing_required,
             "optional_missing": missing_optional,
-            "last_calculated": profile_completeness.last_calculated.isoformat()
+            "last_calculated": profile_completeness.last_calculated.isoformat(),
         }

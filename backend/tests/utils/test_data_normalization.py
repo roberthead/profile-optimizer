@@ -2,7 +2,6 @@
 
 from datetime import datetime
 
-import pytest
 
 from app.utils import normalize_string, normalize_list, parse_datetime
 

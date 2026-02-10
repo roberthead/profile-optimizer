@@ -1,10 +1,11 @@
 """update_member_schema_for_profile_data
 
 Revision ID: f1ca9ebf436c
-Revises: 
+Revises:
 Create Date: 2025-12-01 19:35:59.850676
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -12,7 +13,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'f1ca9ebf436c'
+revision: str = "f1ca9ebf436c"
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -21,65 +22,105 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Upgrade schema."""
     # Add new columns (nullable first for existing data)
-    op.add_column('members', sa.Column('profile_id', sa.UUID(), nullable=True))
-    op.add_column('members', sa.Column('clerk_user_id', sa.String(), nullable=True))
-    op.add_column('members', sa.Column('bio', sa.Text(), nullable=True))
-    op.add_column('members', sa.Column('company', sa.String(), nullable=True))
-    op.add_column('members', sa.Column('role', sa.String(), nullable=True))
-    op.add_column('members', sa.Column('location', sa.String(), nullable=True))
-    op.add_column('members', sa.Column('membership_status', sa.String(), nullable=True, server_default='free'))
-    op.add_column('members', sa.Column('is_public', sa.Boolean(), nullable=True, server_default='true'))
-    op.add_column('members', sa.Column('urls', postgresql.ARRAY(sa.String()), nullable=True))
-    op.add_column('members', sa.Column('roles', postgresql.ARRAY(sa.String()), nullable=True))
-    op.add_column('members', sa.Column('prompt_responses', postgresql.ARRAY(sa.Text()), nullable=True))
-    op.add_column('members', sa.Column('skills', postgresql.ARRAY(sa.String()), nullable=True))
-    op.add_column('members', sa.Column('interests', postgresql.ARRAY(sa.String()), nullable=True))
-    op.add_column('members', sa.Column('all_traits', postgresql.ARRAY(sa.String()), nullable=True))
+    op.add_column("members", sa.Column("profile_id", sa.UUID(), nullable=True))
+    op.add_column("members", sa.Column("clerk_user_id", sa.String(), nullable=True))
+    op.add_column("members", sa.Column("bio", sa.Text(), nullable=True))
+    op.add_column("members", sa.Column("company", sa.String(), nullable=True))
+    op.add_column("members", sa.Column("role", sa.String(), nullable=True))
+    op.add_column("members", sa.Column("location", sa.String(), nullable=True))
+    op.add_column(
+        "members",
+        sa.Column(
+            "membership_status", sa.String(), nullable=True, server_default="free"
+        ),
+    )
+    op.add_column(
+        "members",
+        sa.Column("is_public", sa.Boolean(), nullable=True, server_default="true"),
+    )
+    op.add_column(
+        "members", sa.Column("urls", postgresql.ARRAY(sa.String()), nullable=True)
+    )
+    op.add_column(
+        "members", sa.Column("roles", postgresql.ARRAY(sa.String()), nullable=True)
+    )
+    op.add_column(
+        "members",
+        sa.Column("prompt_responses", postgresql.ARRAY(sa.Text()), nullable=True),
+    )
+    op.add_column(
+        "members", sa.Column("skills", postgresql.ARRAY(sa.String()), nullable=True)
+    )
+    op.add_column(
+        "members", sa.Column("interests", postgresql.ARRAY(sa.String()), nullable=True)
+    )
+    op.add_column(
+        "members", sa.Column("all_traits", postgresql.ARRAY(sa.String()), nullable=True)
+    )
 
     # Migrate data: copy clerk_id to clerk_user_id, generate UUIDs for profile_id
-    op.execute("UPDATE members SET clerk_user_id = clerk_id WHERE clerk_user_id IS NULL")
-    op.execute("UPDATE members SET profile_id = gen_random_uuid() WHERE profile_id IS NULL")
-    op.execute("UPDATE members SET membership_status = 'free' WHERE membership_status IS NULL")
+    op.execute(
+        "UPDATE members SET clerk_user_id = clerk_id WHERE clerk_user_id IS NULL"
+    )
+    op.execute(
+        "UPDATE members SET profile_id = gen_random_uuid() WHERE profile_id IS NULL"
+    )
+    op.execute(
+        "UPDATE members SET membership_status = 'free' WHERE membership_status IS NULL"
+    )
     op.execute("UPDATE members SET is_public = true WHERE is_public IS NULL")
 
     # Now make required columns non-nullable
-    op.alter_column('members', 'profile_id', nullable=False)
-    op.alter_column('members', 'clerk_user_id', nullable=False)
-    op.alter_column('members', 'membership_status', nullable=False)
-    op.alter_column('members', 'is_public', nullable=False)
+    op.alter_column("members", "profile_id", nullable=False)
+    op.alter_column("members", "clerk_user_id", nullable=False)
+    op.alter_column("members", "membership_status", nullable=False)
+    op.alter_column("members", "is_public", nullable=False)
 
     # Update indexes
-    op.drop_index(op.f('ix_members_clerk_id'), table_name='members')
-    op.create_index(op.f('ix_members_clerk_user_id'), 'members', ['clerk_user_id'], unique=True)
-    op.create_index(op.f('ix_members_profile_id'), 'members', ['profile_id'], unique=True)
+    op.drop_index(op.f("ix_members_clerk_id"), table_name="members")
+    op.create_index(
+        op.f("ix_members_clerk_user_id"), "members", ["clerk_user_id"], unique=True
+    )
+    op.create_index(
+        op.f("ix_members_profile_id"), "members", ["profile_id"], unique=True
+    )
 
     # Drop old columns
-    op.drop_column('members', 'what_you_do')
-    op.drop_column('members', 'where_location')
-    op.drop_column('members', 'clerk_id')
+    op.drop_column("members", "what_you_do")
+    op.drop_column("members", "where_location")
+    op.drop_column("members", "clerk_id")
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
-    op.add_column('members', sa.Column('clerk_id', sa.VARCHAR(), autoincrement=False, nullable=False))
-    op.add_column('members', sa.Column('where_location', sa.VARCHAR(), autoincrement=False, nullable=True))
-    op.add_column('members', sa.Column('what_you_do', sa.TEXT(), autoincrement=False, nullable=True))
-    op.drop_index(op.f('ix_members_profile_id'), table_name='members')
-    op.drop_index(op.f('ix_members_clerk_user_id'), table_name='members')
-    op.create_index(op.f('ix_members_clerk_id'), 'members', ['clerk_id'], unique=True)
-    op.drop_column('members', 'all_traits')
-    op.drop_column('members', 'interests')
-    op.drop_column('members', 'skills')
-    op.drop_column('members', 'prompt_responses')
-    op.drop_column('members', 'roles')
-    op.drop_column('members', 'urls')
-    op.drop_column('members', 'is_public')
-    op.drop_column('members', 'membership_status')
-    op.drop_column('members', 'location')
-    op.drop_column('members', 'role')
-    op.drop_column('members', 'company')
-    op.drop_column('members', 'bio')
-    op.drop_column('members', 'clerk_user_id')
-    op.drop_column('members', 'profile_id')
+    op.add_column(
+        "members",
+        sa.Column("clerk_id", sa.VARCHAR(), autoincrement=False, nullable=False),
+    )
+    op.add_column(
+        "members",
+        sa.Column("where_location", sa.VARCHAR(), autoincrement=False, nullable=True),
+    )
+    op.add_column(
+        "members",
+        sa.Column("what_you_do", sa.TEXT(), autoincrement=False, nullable=True),
+    )
+    op.drop_index(op.f("ix_members_profile_id"), table_name="members")
+    op.drop_index(op.f("ix_members_clerk_user_id"), table_name="members")
+    op.create_index(op.f("ix_members_clerk_id"), "members", ["clerk_id"], unique=True)
+    op.drop_column("members", "all_traits")
+    op.drop_column("members", "interests")
+    op.drop_column("members", "skills")
+    op.drop_column("members", "prompt_responses")
+    op.drop_column("members", "roles")
+    op.drop_column("members", "urls")
+    op.drop_column("members", "is_public")
+    op.drop_column("members", "membership_status")
+    op.drop_column("members", "location")
+    op.drop_column("members", "role")
+    op.drop_column("members", "company")
+    op.drop_column("members", "bio")
+    op.drop_column("members", "clerk_user_id")
+    op.drop_column("members", "profile_id")
     # ### end Alembic commands ###

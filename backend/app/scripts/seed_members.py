@@ -76,11 +76,22 @@ async def seed_members(
     for record in data:
         try:
             # Handle both API format (id, camelCase) and export format (profile_id, snake_case)
-            profile_id = record.get("profile_id") or record.get("profileId") or record.get("id")
+            profile_id = (
+                record.get("profile_id") or record.get("profileId") or record.get("id")
+            )
 
             # API doesn't return email/clerk_user_id for privacy - generate placeholders
-            clerk_user_id = record.get("clerk_user_id") or record.get("clerkUserId") or f"api_sync_{profile_id}"
-            email = record.get("clerk_email") or record.get("clerkEmail") or record.get("email") or f"{profile_id}@api-sync.local"
+            clerk_user_id = (
+                record.get("clerk_user_id")
+                or record.get("clerkUserId")
+                or f"api_sync_{profile_id}"
+            )
+            email = (
+                record.get("clerk_email")
+                or record.get("clerkEmail")
+                or record.get("email")
+                or f"{profile_id}@api-sync.local"
+            )
 
             if not profile_id:
                 print(f"Skipping record with missing profile_id: {record}")
@@ -102,15 +113,20 @@ async def seed_members(
 
             # Extract skills and interests from traits array (API format)
             traits = record.get("traits", [])
-            skills_from_traits = [t.get("name") for t in traits if t.get("relationshipType") == "SKILL"]
-            interests_from_traits = [t.get("name") for t in traits if t.get("relationshipType") == "INTEREST"]
+            skills_from_traits = [
+                t.get("name") for t in traits if t.get("relationshipType") == "SKILL"
+            ]
+            interests_from_traits = [
+                t.get("name") for t in traits if t.get("relationshipType") == "INTEREST"
+            ]
             all_trait_names = [t.get("name") for t in traits]
 
             # Extract prompt response texts (API format)
             prompt_responses_api = record.get("promptResponses", [])
             prompt_response_texts = [
                 f"{pr.get('promptText', '')}: {pr.get('responseText', '')}"
-                for pr in prompt_responses_api if pr.get("responseText")
+                for pr in prompt_responses_api
+                if pr.get("responseText")
             ]
 
             # Map membershipTier to membership_status
@@ -121,28 +137,46 @@ async def seed_members(
                 "Team": "active_team_member",
                 "Free": "free",
             }
-            membership_status = membership_status_map.get(membership_tier, record.get("membership_status") or record.get("membershipStatus") or "free")
+            membership_status = membership_status_map.get(
+                membership_tier,
+                record.get("membership_status")
+                or record.get("membershipStatus")
+                or "free",
+            )
 
             member_data = {
                 "profile_id": profile_id,
                 "clerk_user_id": clerk_user_id,
                 "email": email,
-                "first_name": normalize_string(record.get("first_name") or record.get("firstName")),
-                "last_name": normalize_string(record.get("last_name") or record.get("lastName")),
-                "profile_photo_url": normalize_string(record.get("avatar") or record.get("profile_photo_url")),
+                "first_name": normalize_string(
+                    record.get("first_name") or record.get("firstName")
+                ),
+                "last_name": normalize_string(
+                    record.get("last_name") or record.get("lastName")
+                ),
+                "profile_photo_url": normalize_string(
+                    record.get("avatar") or record.get("profile_photo_url")
+                ),
                 "bio": normalize_string(record.get("bio")),
                 "company": normalize_string(record.get("company")),
                 "role": normalize_string(record.get("role")),
                 "website": normalize_string(record.get("website")),
                 "location": normalize_string(record.get("location")),
                 "membership_status": membership_status,
-                "is_public": record.get("is_public") if record.get("is_public") is not None else record.get("isPublic", True),
+                "is_public": record.get("is_public")
+                if record.get("is_public") is not None
+                else record.get("isPublic", True),
                 "urls": normalize_list(record.get("urls")),
                 "roles": normalize_list(record.get("roles")),
-                "prompt_responses": normalize_list(record.get("prompt_responses")) or prompt_response_texts,
+                "prompt_responses": normalize_list(record.get("prompt_responses"))
+                or prompt_response_texts,
                 "skills": normalize_list(record.get("skills")) or skills_from_traits,
-                "interests": normalize_list(record.get("interests")) or interests_from_traits,
-                "all_traits": normalize_list(record.get("all_traits") or record.get("allTraits")) or all_trait_names,
+                "interests": normalize_list(record.get("interests"))
+                or interests_from_traits,
+                "all_traits": normalize_list(
+                    record.get("all_traits") or record.get("allTraits")
+                )
+                or all_trait_names,
             }
 
             if existing_member:
@@ -213,9 +247,7 @@ async def fetch_from_api() -> list[dict]:
 
 
 async def main():
-    parser = argparse.ArgumentParser(
-        description="Seed members from White Rabbit API"
-    )
+    parser = argparse.ArgumentParser(description="Seed members from White Rabbit API")
     parser.add_argument(
         "--clear",
         action="store_true",
@@ -240,7 +272,7 @@ async def main():
             dry_run=args.dry_run,
         )
 
-    print(f"\nSeeding complete:")
+    print("\nSeeding complete:")
     print(f"  Created: {created}")
     print(f"  Updated: {updated}")
     print(f"  Skipped: {skipped}")

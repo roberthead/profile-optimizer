@@ -1,7 +1,7 @@
 """Tests for the QuestionQueueBuilder service."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -11,12 +11,12 @@ from app.models import (
     Question,
     QuestionCategory,
     QuestionType,
-    QuestionResponse,
 )
 from app.services.question_queue import QuestionQueueBuilder, ScoredQuestion
 
 
 # ---- Fixtures ----
+
 
 def make_member(
     id=1,
@@ -42,9 +42,15 @@ def make_member(
     member.company = company
     member.location = location
     member.website = website
-    member.skills = skills or ["Python", "React", "PostgreSQL"]
-    member.interests = interests or ["AI", "Music", "Open Source"]
-    member.prompt_responses = prompt_responses or ["I joined because I love the community."]
+    member.skills = skills if skills is not None else ["Python", "React", "PostgreSQL"]
+    member.interests = (
+        interests if interests is not None else ["AI", "Music", "Open Source"]
+    )
+    member.prompt_responses = (
+        prompt_responses
+        if prompt_responses is not None
+        else ["I joined because I love the community."]
+    )
     return member
 
 
@@ -96,6 +102,7 @@ def make_question(
 
 # ---- Helper to mock DB queries ----
 
+
 def setup_mock_db(
     member=None,
     patterns=None,
@@ -135,8 +142,8 @@ def setup_mock_db(
 
 # ---- Tests ----
 
-class TestQuestionQueueBuilder:
 
+class TestQuestionQueueBuilder:
     @pytest.mark.asyncio
     async def test_member_not_found_returns_none(self):
         db = setup_mock_db(member=None)
@@ -161,8 +168,12 @@ class TestQuestionQueueBuilder:
         """Questions targeting profile gaps should get profile_gap score."""
         member = make_member(bio=None, role=None, skills=[])
 
-        q1 = make_question(id=1, text="Tell us about yourself", related_profile_fields=["bio"])
-        q2 = make_question(id=2, text="What do you do?", related_profile_fields=["role"])
+        q1 = make_question(
+            id=1, text="Tell us about yourself", related_profile_fields=["bio"]
+        )
+        q2 = make_question(
+            id=2, text="What do you do?", related_profile_fields=["role"]
+        )
         q3 = make_question(id=3, text="Random question")
 
         db = setup_mock_db(member=member, questions=[q1, q2, q3])
@@ -185,10 +196,15 @@ class TestQuestionQueueBuilder:
             id=10,
             name="AI Builders",
             related_member_ids=[2, 3],  # member 1 not in this pattern
-            evidence={"skills": ["Python", "TensorFlow"], "interests": ["AI", "Machine Learning"]},
+            evidence={
+                "skills": ["Python", "TensorFlow"],
+                "interests": ["AI", "Machine Learning"],
+            },
         )
 
-        q1 = make_question(id=1, text="How do you use AI?", related_pattern_ids=[10], difficulty=2)
+        q1 = make_question(
+            id=1, text="How do you use AI?", related_pattern_ids=[10], difficulty=2
+        )
         q2 = make_question(id=2, text="Generic question")
 
         db = setup_mock_db(member=member, patterns=[pattern], questions=[q1, q2])
@@ -210,7 +226,9 @@ class TestQuestionQueueBuilder:
             related_member_ids=[1, 2, 3],  # member 1 IS in this pattern
         )
 
-        q1 = make_question(id=1, text="What inspires your tech+art work?", related_pattern_ids=[5])
+        q1 = make_question(
+            id=1, text="What inspires your tech+art work?", related_pattern_ids=[5]
+        )
         q2 = make_question(id=2, text="Generic question")
 
         db = setup_mock_db(member=member, patterns=[pattern], questions=[q1, q2])
@@ -252,7 +270,9 @@ class TestQuestionQueueBuilder:
         """Questions with profile fields but no pattern link get fallback score."""
         member = make_member()
 
-        q1 = make_question(id=1, text="Question with fields", related_profile_fields=["skills"])
+        q1 = make_question(
+            id=1, text="Question with fields", related_profile_fields=["skills"]
+        )
 
         db = setup_mock_db(member=member, questions=[q1])
         builder = QuestionQueueBuilder(db)
@@ -268,10 +288,20 @@ class TestQuestionQueueBuilder:
         member = make_member(bio=None, role=None)
 
         questions = [
-            make_question(id=i, text=f"Q{i}", difficulty=d, related_profile_fields=["bio"])
+            make_question(
+                id=i, text=f"Q{i}", difficulty=d, related_profile_fields=["bio"]
+            )
             for i, d in [
-                (1, 3), (2, 1), (3, 2), (4, 1), (5, 2),
-                (6, 3), (7, 1), (8, 2), (9, 3), (10, 2),
+                (1, 3),
+                (2, 1),
+                (3, 2),
+                (4, 1),
+                (5, 2),
+                (6, 3),
+                (7, 1),
+                (8, 2),
+                (9, 3),
+                (10, 2),
             ]
         ]
 
@@ -287,7 +317,6 @@ class TestQuestionQueueBuilder:
         # Last should prefer deep (difficulty 3)
         # (exact assignment depends on score ties, but the structure should hold)
         early_diffs = [q["difficulty"] for q in queue[:3]]
-        late_diffs = [q["difficulty"] for q in queue[7:]]
         # At least some easy questions should be in the front
         assert 1 in early_diffs
 
@@ -302,7 +331,9 @@ class TestQuestionQueueBuilder:
             evidence={"skills": ["Python"], "interests": ["AI"]},
         )
 
-        q1 = make_question(id=1, text="Q1", related_pattern_ids=[10], related_profile_fields=["bio"])
+        q1 = make_question(
+            id=1, text="Q1", related_pattern_ids=[10], related_profile_fields=["bio"]
+        )
         q2 = make_question(id=2, text="Q2", related_profile_fields=["role"])
 
         db = setup_mock_db(member=member, patterns=[pattern], questions=[q1, q2])
@@ -354,10 +385,7 @@ class TestQuestionQueueBuilder:
         """Queue works with fewer than 10 available questions."""
         member = make_member()
 
-        questions = [
-            make_question(id=i, text=f"Q{i}")
-            for i in range(1, 4)
-        ]
+        questions = [make_question(id=i, text=f"Q{i}") for i in range(1, 4)]
 
         db = setup_mock_db(member=member, questions=questions)
         builder = QuestionQueueBuilder(db)
@@ -379,7 +407,9 @@ class TestQuestionQueueBuilder:
 
         q1 = make_question(id=1, text="Q1")
 
-        db = setup_mock_db(member=member, patterns=[pattern_in, pattern_close], questions=[q1])
+        db = setup_mock_db(
+            member=member, patterns=[pattern_in, pattern_close], questions=[q1]
+        )
         builder = QuestionQueueBuilder(db)
         result = await builder.build_queue(1)
 
@@ -393,7 +423,6 @@ class TestQuestionQueueBuilder:
 
 
 class TestProfileGapDetection:
-
     def test_full_profile_no_gaps(self):
         member = make_member()
         gaps = QuestionQueueBuilder._detect_profile_gaps(member)
@@ -433,7 +462,6 @@ class TestProfileGapDetection:
 
 
 class TestSequencing:
-
     def test_sequence_prefers_difficulty_order(self):
         """Easy questions first, deep questions last."""
         questions = [

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ProfileHealth } from '../components/ProfileHealth';
 import { ProfileChat } from '../components/ProfileChat';
@@ -36,13 +36,16 @@ export const Home: React.FC = () => {
     return name || member.email;
   };
 
-  const sortedMembers = membersData?.members
-    ? [...membersData.members].sort((a, b) => {
-        const nameA = getMemberDisplayName(a).toLowerCase();
-        const nameB = getMemberDisplayName(b).toLowerCase();
-        return nameA.localeCompare(nameB);
-      })
-    : [];
+  const sortedMembers = useMemo(() =>
+    membersData?.members
+      ? [...membersData.members].sort((a, b) => {
+          const nameA = getMemberDisplayName(a).toLowerCase();
+          const nameB = getMemberDisplayName(b).toLowerCase();
+          return nameA.localeCompare(nameB);
+        })
+      : [],
+    [membersData],
+  );
 
   // Set default member once data loads (first alphabetically)
   React.useEffect(() => {

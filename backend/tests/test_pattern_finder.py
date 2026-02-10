@@ -8,7 +8,7 @@ from app.tools.question_tools import (
     SAVE_PATTERN_TOOL,
 )
 from app.agents.pattern_finder import PatternFinderAgent
-from app.models import Pattern, PatternCategory
+from app.models import PatternCategory
 
 
 class TestSavePatternTool:
@@ -43,7 +43,9 @@ class TestSavePatternTool:
         mock_db_session.commit.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_save_pattern_updates_existing_pattern(self, mock_db_session, sample_pattern):
+    async def test_save_pattern_updates_existing_pattern(
+        self, mock_db_session, sample_pattern
+    ):
         """Test that save_pattern updates an existing pattern."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = sample_pattern
@@ -134,19 +136,21 @@ class TestPatternFinderAgent:
     @pytest.mark.asyncio
     async def test_agent_initialization(self, mock_db_session):
         """Test that agent initializes correctly."""
-        with patch('app.agents.pattern_finder.anthropic.Anthropic'):
+        with patch("app.agents.pattern_finder.anthropic.Anthropic"):
             agent = PatternFinderAgent(mock_db_session)
             assert agent.db == mock_db_session
             assert agent.model == "claude-sonnet-4-20250514"
 
     @pytest.mark.asyncio
-    async def test_execute_tool_community_analysis(self, mock_db_session, sample_members):
+    async def test_execute_tool_community_analysis(
+        self, mock_db_session, sample_members
+    ):
         """Test that _execute_tool handles community analysis correctly."""
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = sample_members
         mock_db_session.execute = AsyncMock(return_value=mock_result)
 
-        with patch('app.agents.pattern_finder.anthropic.Anthropic'):
+        with patch("app.agents.pattern_finder.anthropic.Anthropic"):
             agent = PatternFinderAgent(mock_db_session)
             result_dict = {
                 "success": False,
@@ -156,9 +160,7 @@ class TestPatternFinderAgent:
             }
 
             tool_result = await agent._execute_tool(
-                "get_community_profile_analysis",
-                {},
-                result_dict
+                "get_community_profile_analysis", {}, result_dict
             )
 
             assert "total_active_members" in tool_result
@@ -174,7 +176,7 @@ class TestPatternFinderAgent:
         mock_db_session.refresh = AsyncMock()
         mock_db_session.add = MagicMock()
 
-        with patch('app.agents.pattern_finder.anthropic.Anthropic'):
+        with patch("app.agents.pattern_finder.anthropic.Anthropic"):
             agent = PatternFinderAgent(mock_db_session)
             result_dict = {
                 "success": False,
@@ -191,9 +193,7 @@ class TestPatternFinderAgent:
             }
 
             tool_result = await agent._execute_tool(
-                "save_pattern",
-                pattern_input,
-                result_dict
+                "save_pattern", pattern_input, result_dict
             )
 
             assert "error" not in tool_result
@@ -203,7 +203,7 @@ class TestPatternFinderAgent:
     @pytest.mark.asyncio
     async def test_execute_tool_save_pattern_error(self, mock_db_session):
         """Test that _execute_tool handles save_pattern errors correctly."""
-        with patch('app.agents.pattern_finder.anthropic.Anthropic'):
+        with patch("app.agents.pattern_finder.anthropic.Anthropic"):
             agent = PatternFinderAgent(mock_db_session)
             result_dict = {
                 "success": False,
@@ -220,9 +220,7 @@ class TestPatternFinderAgent:
             }
 
             tool_result = await agent._execute_tool(
-                "save_pattern",
-                pattern_input,
-                result_dict
+                "save_pattern", pattern_input, result_dict
             )
 
             assert "error" in tool_result
@@ -233,7 +231,7 @@ class TestPatternFinderAgent:
     @pytest.mark.asyncio
     async def test_execute_tool_unknown_tool(self, mock_db_session):
         """Test that _execute_tool handles unknown tools."""
-        with patch('app.agents.pattern_finder.anthropic.Anthropic'):
+        with patch("app.agents.pattern_finder.anthropic.Anthropic"):
             agent = PatternFinderAgent(mock_db_session)
             result_dict = {
                 "success": False,
@@ -242,11 +240,7 @@ class TestPatternFinderAgent:
                 "response_text": "",
             }
 
-            tool_result = await agent._execute_tool(
-                "unknown_tool",
-                {},
-                result_dict
-            )
+            tool_result = await agent._execute_tool("unknown_tool", {}, result_dict)
 
             assert "error" in tool_result
             assert "unknown_tool" in tool_result["error"].lower()

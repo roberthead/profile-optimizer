@@ -84,10 +84,11 @@ export const ProfileChat: React.FC<ProfileChatProps> = ({ memberId, memberName }
     scrollToBottom();
   }, [messages]);
 
-  // Load session from localStorage when member changes
+  // Load session from localStorage (external system) when member changes
   useEffect(() => {
     const savedSessionId = localStorage.getItem(getSessionKey(memberId));
     if (savedSessionId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing from localStorage
       setSessionId(savedSessionId);
       setIsRestoringSession(true);
     } else {

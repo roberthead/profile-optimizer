@@ -1,56 +1,62 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user_id
 from app.services import WhiteRabbitClient, WhiteRabbitAPIError
-from app.utils import normalize_string, normalize_list, parse_datetime
-from app.agents.interactive import InteractiveAgent
+from app.utils import normalize_string, normalize_list
 from app.agents.profile_evaluation import ProfileEvaluationAgent
 from app.agents.profile_chat import ProfileChatAgent
-from app.agents.url_processing import UrlProcessingAgent
 from app.agents.question_deck import QuestionDeckAgent
 from app.agents.pattern_finder import PatternFinderAgent
 from app.services.question_queue import QuestionQueueBuilder
-from app.models import Member, ProfileCompleteness, ConversationHistory, QuestionDeck, Question, SocialLink, Pattern, PatternCategory
+from app.models import (
+    Member,
+    ProfileCompleteness,
+    ConversationHistory,
+    QuestionDeck,
+    Question,
+    Pattern,
+    PatternCategory,
+)
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
-import uuid
 
 router = APIRouter()
+
 
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
     member_id: int
 
+
 class ChatResponse(BaseModel):
     response: str
     session_id: str
     suggestions_made: List[dict] = []
 
+
 class SocialLinkRequest(BaseModel):
     url: str
     platform: str
 
+
 @router.post("/chat", response_model=ChatResponse)
-async def chat(
-    request: ChatRequest,
-    db: AsyncSession = Depends(get_db)
-):
+async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     """Chat with the profile optimization agent."""
     try:
         agent = ProfileChatAgent(db)
         result = await agent.chat(
             member_id=request.member_id,
             message=request.message,
-            session_id=request.session_id
+            session_id=request.session_id,
         )
         return ChatResponse(
             response=result["response"],
             session_id=result["session_id"],
-            suggestions_made=result.get("suggestions_made", [])
+            suggestions_made=result.get("suggestions_made", []),
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -68,9 +74,7 @@ class ChatHistoryResponse(BaseModel):
 
 @router.get("/chat/history")
 async def get_chat_history(
-    member_id: int,
-    session_id: str,
-    db: AsyncSession = Depends(get_db)
+    member_id: int, session_id: str, db: AsyncSession = Depends(get_db)
 ):
     """Get conversation history for a member's session."""
     result = await db.execute(
@@ -83,24 +87,20 @@ async def get_chat_history(
 
     return ChatHistoryResponse(
         messages=[
-            ChatMessage(role=msg.role, content=msg.message_content)
-            for msg in messages
+            ChatMessage(role=msg.role, content=msg.message_content) for msg in messages
         ],
-        session_id=session_id
+        session_id=session_id,
     )
 
 
 @router.get("/chat/sessions")
-async def get_chat_sessions(
-    member_id: int,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_chat_sessions(member_id: int, db: AsyncSession = Depends(get_db)):
     """Get all session IDs for a member, with the most recent message timestamp."""
     # Get distinct sessions with their latest message
     result = await db.execute(
         select(
             ConversationHistory.session_id,
-            func.max(ConversationHistory.created_at).label("last_message_at")
+            func.max(ConversationHistory.created_at).label("last_message_at"),
         )
         .where(ConversationHistory.member_id == member_id)
         .group_by(ConversationHistory.session_id)
@@ -110,7 +110,10 @@ async def get_chat_sessions(
 
     return {
         "sessions": [
-            {"session_id": s.session_id, "last_message_at": s.last_message_at.isoformat()}
+            {
+                "session_id": s.session_id,
+                "last_message_at": s.last_message_at.isoformat(),
+            }
             for s in sessions
         ]
     }
@@ -119,14 +122,12 @@ async def get_chat_sessions(
 @router.post("/profile/evaluate")
 async def evaluate_profile(
     member_id: Optional[int] = None,  # TODO: Get from auth when ready
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     try:
         # If no member_id provided, get the first available member
         if member_id is None:
-            result = await db.execute(
-                select(Member.id).order_by(Member.id).limit(1)
-            )
+            result = await db.execute(select(Member.id).order_by(Member.id).limit(1))
             member_id = result.scalar_one_or_none()
             if member_id is None:
                 raise HTTPException(status_code=404, detail="No members found")
@@ -134,19 +135,27 @@ async def evaluate_profile(
         # Check for existing recent evaluation
         one_week_ago = datetime.now(timezone.utc) - timedelta(weeks=1)
         result = await db.execute(
-            select(ProfileCompleteness).where(ProfileCompleteness.member_id == member_id)
+            select(ProfileCompleteness).where(
+                ProfileCompleteness.member_id == member_id
+            )
         )
         existing = result.scalar_one_or_none()
 
         # Use cached result if it exists and is less than a week old
-        if existing and existing.last_calculated and existing.last_calculated >= one_week_ago:
+        if (
+            existing
+            and existing.last_calculated
+            and existing.last_calculated >= one_week_ago
+        ):
             missing_fields = existing.missing_fields or {}
             return {
                 "completeness_score": existing.completeness_score,
                 "missing_fields": missing_fields.get("required", []),
                 "optional_missing": missing_fields.get("optional", []),
                 "assessment": existing.assessment or "",
-                "last_calculated": existing.last_calculated.isoformat() if existing.last_calculated else None,
+                "last_calculated": existing.last_calculated.isoformat()
+                if existing.last_calculated
+                else None,
             }
 
         # Otherwise, run the agent to generate a fresh evaluation
@@ -156,30 +165,38 @@ async def evaluate_profile(
         # Return in the format expected by the frontend
         return {
             "completeness_score": result["completeness_score"],
-            "missing_fields": [f for f in result["empty_fields"] if f in ["First Name", "Last Name", "Email"]],
-            "optional_missing": [f for f in result["empty_fields"] if f not in ["First Name", "Last Name", "Email"]],
+            "missing_fields": [
+                f
+                for f in result["empty_fields"]
+                if f in ["First Name", "Last Name", "Email"]
+            ],
+            "optional_missing": [
+                f
+                for f in result["empty_fields"]
+                if f not in ["First Name", "Last Name", "Email"]
+            ],
             "assessment": result.get("assessment", ""),
             "last_calculated": result.get("last_calculated", None),
         }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+
 @router.post("/social-links")
 async def add_social_link(
     link: SocialLinkRequest,
     background_tasks: BackgroundTasks,
     current_user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    member_id = 1 # TODO: Resolve
-
+    # TODO: Resolve member_id from auth
     # Save link to DB (Pseudo-code)
-    # social_link = SocialLink(member_id=member_id, url=link.url, platform=link.platform)
+    # social_link = SocialLink(member_id=1, url=link.url, platform=link.platform)
     # db.add(social_link)
     # await db.commit()
 
-    # Trigger background processing
-    agent = UrlProcessingAgent(db)
+    # TODO: Trigger background processing
+    # agent = UrlProcessingAgent(db)
     # background_tasks.add_task(agent.process_url, social_link.id)
 
     return {"status": "processing", "message": "Link added and processing started"}
@@ -241,22 +258,22 @@ async def list_members(
     per_page: int = Query(20, ge=1, le=500),
     search: Optional[str] = None,
     membership_status: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """List all members with pagination and optional filtering."""
     query = select(Member)
 
     # Always exclude cancelled and expired members
-    query = query.where(Member.membership_status.notin_(['cancelled', 'expired']))
+    query = query.where(Member.membership_status.notin_(["cancelled", "expired"]))
 
     # Apply filters
     if search:
         search_pattern = f"%{search}%"
         query = query.where(
-            (Member.first_name.ilike(search_pattern)) |
-            (Member.last_name.ilike(search_pattern)) |
-            (Member.email.ilike(search_pattern)) |
-            (Member.bio.ilike(search_pattern))
+            (Member.first_name.ilike(search_pattern))
+            | (Member.last_name.ilike(search_pattern))
+            | (Member.email.ilike(search_pattern))
+            | (Member.bio.ilike(search_pattern))
         )
 
     if membership_status:
@@ -268,7 +285,9 @@ async def list_members(
     total = total_result.scalar()
 
     # Apply pagination
-    query = query.order_by(Member.last_name.asc().nulls_last(), Member.first_name.asc().nulls_last())
+    query = query.order_by(
+        Member.last_name.asc().nulls_last(), Member.first_name.asc().nulls_last()
+    )
     query = query.offset((page - 1) * per_page).limit(per_page)
 
     result = await db.execute(query)
@@ -298,10 +317,7 @@ async def list_members(
 
 
 @router.get("/members/{member_id}", response_model=MemberDetail)
-async def get_member(
-    member_id: int,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_member(member_id: int, db: AsyncSession = Depends(get_db)):
     """Get a single member by ID."""
     result = await db.execute(select(Member).where(Member.id == member_id))
     member = result.scalar_one_or_none()
@@ -350,6 +366,16 @@ class RefineDeckRequest(BaseModel):
     feedback: str
 
 
+class ShareQuestionRequest(BaseModel):
+    question_id: int
+    notes: Optional[str] = None
+
+
+class ShareQuestionResponse(BaseModel):
+    success: bool
+    message: str
+
+
 class QuestionModel(BaseModel):
     id: int
     question_text: str
@@ -391,8 +417,7 @@ class DeckGenerationResponse(BaseModel):
 
 @router.post("/questions/deck/generate-global", response_model=DeckGenerationResponse)
 async def generate_global_deck(
-    request: GenerateGlobalDeckRequest,
-    db: AsyncSession = Depends(get_db)
+    request: GenerateGlobalDeckRequest, db: AsyncSession = Depends(get_db)
 ):
     """Generate a global question deck by analyzing all member profiles."""
     agent = QuestionDeckAgent(db)
@@ -400,22 +425,20 @@ async def generate_global_deck(
         deck_name=request.deck_name,
         description=request.description,
         num_questions=request.num_questions,
-        focus_categories=request.focus_categories
+        focus_categories=request.focus_categories,
     )
     return DeckGenerationResponse(**result)
 
 
 @router.post("/questions/deck/generate-personal", response_model=DeckGenerationResponse)
 async def generate_personal_deck(
-    request: GeneratePersonalDeckRequest,
-    db: AsyncSession = Depends(get_db)
+    request: GeneratePersonalDeckRequest, db: AsyncSession = Depends(get_db)
 ):
     """Generate a personalized question deck for a specific member."""
     try:
         agent = QuestionDeckAgent(db)
         result = await agent.generate_personalized_deck(
-            member_id=request.member_id,
-            num_questions=request.num_questions
+            member_id=request.member_id, num_questions=request.num_questions
         )
         return DeckGenerationResponse(**result)
     except ValueError as e:
@@ -423,16 +446,12 @@ async def generate_personal_deck(
 
 
 @router.post("/questions/deck/refine", response_model=DeckGenerationResponse)
-async def refine_deck(
-    request: RefineDeckRequest,
-    db: AsyncSession = Depends(get_db)
-):
+async def refine_deck(request: RefineDeckRequest, db: AsyncSession = Depends(get_db)):
     """Refine an existing question deck based on feedback."""
     try:
         agent = QuestionDeckAgent(db)
         result = await agent.refine_deck(
-            deck_id=request.deck_id,
-            feedback=request.feedback
+            deck_id=request.deck_id, feedback=request.feedback
         )
         return DeckGenerationResponse(**result)
     except ValueError as e:
@@ -443,7 +462,7 @@ async def refine_deck(
 async def list_decks(
     member_id: Optional[int] = None,
     include_global: bool = True,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """List question decks, optionally filtered by member."""
     query = select(QuestionDeck).where(QuestionDeck.is_active == True)
@@ -451,8 +470,8 @@ async def list_decks(
     if member_id is not None:
         if include_global:
             query = query.where(
-                (QuestionDeck.member_id == member_id) |
-                (QuestionDeck.member_id.is_(None))
+                (QuestionDeck.member_id == member_id)
+                | (QuestionDeck.member_id.is_(None))
             )
         else:
             query = query.where(QuestionDeck.member_id == member_id)
@@ -475,45 +494,42 @@ async def list_decks(
         )
         questions = questions_result.scalars().all()
 
-        response_decks.append(QuestionDeckModel(
-            id=deck.id,
-            deck_id=str(deck.deck_id),
-            name=deck.name,
-            description=deck.description,
-            member_id=deck.member_id,
-            is_active=deck.is_active,
-            version=deck.version,
-            questions=[
-                QuestionModel(
-                    id=q.id,
-                    question_text=q.question_text,
-                    question_type=q.question_type.value,
-                    category=q.category.value,
-                    difficulty_level=q.difficulty_level,
-                    purpose=q.purpose,
-                    follow_up_prompts=q.follow_up_prompts or [],
-                    potential_insights=q.potential_insights or [],
-                    related_profile_fields=q.related_profile_fields or [],
-                    options=q.options or [],
-                    blank_prompt=q.blank_prompt,
-                )
-                for q in questions
-            ],
-            created_at=deck.created_at,
-        ))
+        response_decks.append(
+            QuestionDeckModel(
+                id=deck.id,
+                deck_id=str(deck.deck_id),
+                name=deck.name,
+                description=deck.description,
+                member_id=deck.member_id,
+                is_active=deck.is_active,
+                version=deck.version,
+                questions=[
+                    QuestionModel(
+                        id=q.id,
+                        question_text=q.question_text,
+                        question_type=q.question_type.value,
+                        category=q.category.value,
+                        difficulty_level=q.difficulty_level,
+                        purpose=q.purpose,
+                        follow_up_prompts=q.follow_up_prompts or [],
+                        potential_insights=q.potential_insights or [],
+                        related_profile_fields=q.related_profile_fields or [],
+                        options=q.options or [],
+                        blank_prompt=q.blank_prompt,
+                    )
+                    for q in questions
+                ],
+                created_at=deck.created_at,
+            )
+        )
 
     return response_decks
 
 
 @router.get("/questions/deck/{deck_id}", response_model=QuestionDeckModel)
-async def get_deck(
-    deck_id: int,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_deck(deck_id: int, db: AsyncSession = Depends(get_db)):
     """Get a specific question deck with its questions."""
-    result = await db.execute(
-        select(QuestionDeck).where(QuestionDeck.id == deck_id)
-    )
+    result = await db.execute(select(QuestionDeck).where(QuestionDeck.id == deck_id))
     deck = result.scalar_one_or_none()
 
     if not deck:
@@ -556,6 +572,7 @@ async def get_deck(
 
 
 # Question Queue endpoint
+
 
 class QueuedQuestionPatternModel(BaseModel):
     id: int
@@ -606,10 +623,7 @@ class QuestionQueueResponse(BaseModel):
 
 
 @router.get("/questions/queue/{member_id}", response_model=QuestionQueueResponse)
-async def get_question_queue(
-    member_id: int,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_question_queue(member_id: int, db: AsyncSession = Depends(get_db)):
     """Get a scored and sequenced question queue for a member.
 
     Returns the top 10 questions optimized to learn the most about
@@ -624,6 +638,48 @@ async def get_question_queue(
     return QuestionQueueResponse(**result)
 
 
+@router.post("/questions/share", response_model=ShareQuestionResponse)
+async def share_question(
+    request: ShareQuestionRequest, db: AsyncSession = Depends(get_db)
+):
+    """Share a question with the White Rabbit website."""
+    result = await db.execute(
+        select(Question).where(Question.id == request.question_id)
+    )
+    question = result.scalar_one_or_none()
+
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    payload = {
+        "questionText": question.question_text,
+        "description": question.purpose,
+        "questionType": question.question_type.value,
+        "source": "profile_optimizer",
+        "category": question.category.value,
+        "displayOrder": question.order_index,
+    }
+    if request.notes:
+        payload["notes"] = request.notes
+
+    try:
+        client = WhiteRabbitClient()
+        await client.post_question(payload)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Configuration error: {str(e)}. Make sure WHITE_RABBIT_API_KEY is set.",
+        )
+    except WhiteRabbitAPIError as e:
+        raise HTTPException(
+            status_code=502, detail=f"Failed to post to White Rabbit API: {e.message}"
+        )
+
+    return ShareQuestionResponse(
+        success=True, message="Question shared with White Rabbit HQ"
+    )
+
+
 # Admin endpoints
 class SyncMembersResponse(BaseModel):
     success: bool
@@ -634,9 +690,7 @@ class SyncMembersResponse(BaseModel):
 
 
 @router.post("/admin/sync-members", response_model=SyncMembersResponse)
-async def sync_members_from_api(
-    db: AsyncSession = Depends(get_db)
-):
+async def sync_members_from_api(db: AsyncSession = Depends(get_db)):
     """
     Sync members from the White Rabbit API.
 
@@ -650,12 +704,12 @@ async def sync_members_from_api(
     except ValueError as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Configuration error: {str(e)}. Make sure WHITE_RABBIT_API_KEY is set."
+            detail=f"Configuration error: {str(e)}. Make sure WHITE_RABBIT_API_KEY is set.",
         )
     except WhiteRabbitAPIError as e:
         raise HTTPException(
             status_code=502,
-            detail=f"Failed to fetch from White Rabbit API: {e.message}"
+            detail=f"Failed to fetch from White Rabbit API: {e.message}",
         )
 
     created = 0
@@ -666,11 +720,22 @@ async def sync_members_from_api(
     for record in api_members:
         try:
             # Handle API format (id, camelCase) and export format (profile_id, snake_case)
-            profile_id = record.get("profile_id") or record.get("profileId") or record.get("id")
+            profile_id = (
+                record.get("profile_id") or record.get("profileId") or record.get("id")
+            )
 
             # API doesn't return email/clerk_user_id for privacy - generate placeholders
-            clerk_user_id = record.get("clerk_user_id") or record.get("clerkUserId") or f"api_sync_{profile_id}"
-            email = record.get("clerk_email") or record.get("clerkEmail") or record.get("email") or f"{profile_id}@api-sync.local"
+            clerk_user_id = (
+                record.get("clerk_user_id")
+                or record.get("clerkUserId")
+                or f"api_sync_{profile_id}"
+            )
+            email = (
+                record.get("clerk_email")
+                or record.get("clerkEmail")
+                or record.get("email")
+                or f"{profile_id}@api-sync.local"
+            )
 
             if not profile_id:
                 skipped += 1
@@ -690,15 +755,20 @@ async def sync_members_from_api(
 
             # Extract skills and interests from traits array (API format)
             traits = record.get("traits", [])
-            skills_from_traits = [t.get("name") for t in traits if t.get("relationshipType") == "SKILL"]
-            interests_from_traits = [t.get("name") for t in traits if t.get("relationshipType") == "INTEREST"]
+            skills_from_traits = [
+                t.get("name") for t in traits if t.get("relationshipType") == "SKILL"
+            ]
+            interests_from_traits = [
+                t.get("name") for t in traits if t.get("relationshipType") == "INTEREST"
+            ]
             all_trait_names = [t.get("name") for t in traits]
 
             # Extract prompt response texts (API format)
             prompt_responses_api = record.get("promptResponses", [])
             prompt_response_texts = [
                 f"{pr.get('promptText', '')}: {pr.get('responseText', '')}"
-                for pr in prompt_responses_api if pr.get("responseText")
+                for pr in prompt_responses_api
+                if pr.get("responseText")
             ]
 
             # Map membershipTier to membership_status
@@ -709,28 +779,46 @@ async def sync_members_from_api(
                 "Team": "active_team_member",
                 "Free": "free",
             }
-            membership_status = membership_status_map.get(membership_tier, record.get("membership_status") or record.get("membershipStatus") or "free")
+            membership_status = membership_status_map.get(
+                membership_tier,
+                record.get("membership_status")
+                or record.get("membershipStatus")
+                or "free",
+            )
 
             member_data = {
                 "profile_id": profile_id,
                 "clerk_user_id": clerk_user_id,
                 "email": email,
-                "first_name": normalize_string(record.get("first_name") or record.get("firstName")),
-                "last_name": normalize_string(record.get("last_name") or record.get("lastName")),
-                "profile_photo_url": normalize_string(record.get("avatar") or record.get("profile_photo_url")),
+                "first_name": normalize_string(
+                    record.get("first_name") or record.get("firstName")
+                ),
+                "last_name": normalize_string(
+                    record.get("last_name") or record.get("lastName")
+                ),
+                "profile_photo_url": normalize_string(
+                    record.get("avatar") or record.get("profile_photo_url")
+                ),
                 "bio": normalize_string(record.get("bio")),
                 "company": normalize_string(record.get("company")),
                 "role": normalize_string(record.get("role")),
                 "website": normalize_string(record.get("website")),
                 "location": normalize_string(record.get("location")),
                 "membership_status": membership_status,
-                "is_public": record.get("is_public") if record.get("is_public") is not None else record.get("isPublic", True),
+                "is_public": record.get("is_public")
+                if record.get("is_public") is not None
+                else record.get("isPublic", True),
                 "urls": normalize_list(record.get("urls")),
                 "roles": normalize_list(record.get("roles")),
-                "prompt_responses": normalize_list(record.get("prompt_responses")) or prompt_response_texts,
+                "prompt_responses": normalize_list(record.get("prompt_responses"))
+                or prompt_response_texts,
                 "skills": normalize_list(record.get("skills")) or skills_from_traits,
-                "interests": normalize_list(record.get("interests")) or interests_from_traits,
-                "all_traits": normalize_list(record.get("all_traits") or record.get("allTraits")) or all_trait_names,
+                "interests": normalize_list(record.get("interests"))
+                or interests_from_traits,
+                "all_traits": normalize_list(
+                    record.get("all_traits") or record.get("allTraits")
+                )
+                or all_trait_names,
             }
 
             if existing_member:
@@ -744,7 +832,7 @@ async def sync_members_from_api(
                 db.add(member)
                 created += 1
 
-        except Exception as e:
+        except Exception:
             skipped += 1
             continue
 
@@ -755,11 +843,12 @@ async def sync_members_from_api(
         created=created,
         updated=updated,
         skipped=skipped,
-        message=f"Synced {created + updated} members from White Rabbit API"
+        message=f"Synced {created + updated} members from White Rabbit API",
     )
 
 
 # Pattern discovery endpoints
+
 
 class PatternModel(BaseModel):
     id: int
@@ -786,9 +875,7 @@ class PatternDiscoveryResponse(BaseModel):
 
 
 @router.post("/patterns/discover", response_model=PatternDiscoveryResponse)
-async def discover_patterns(
-    db: AsyncSession = Depends(get_db)
-):
+async def discover_patterns(db: AsyncSession = Depends(get_db)):
     """
     Discover patterns in community member data.
 
@@ -801,9 +888,7 @@ async def discover_patterns(
 
 
 @router.post("/patterns/refresh", response_model=PatternDiscoveryResponse)
-async def refresh_patterns(
-    db: AsyncSession = Depends(get_db)
-):
+async def refresh_patterns(db: AsyncSession = Depends(get_db)):
     """
     Refresh all patterns by re-analyzing member data.
 
@@ -818,7 +903,7 @@ async def refresh_patterns(
 async def list_patterns(
     category: Optional[str] = None,
     active_only: bool = True,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """List discovered patterns, optionally filtered by category."""
     query = select(Pattern)
@@ -857,14 +942,9 @@ async def list_patterns(
 
 
 @router.get("/patterns/{pattern_id}", response_model=PatternModel)
-async def get_pattern(
-    pattern_id: int,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_pattern(pattern_id: int, db: AsyncSession = Depends(get_db)):
     """Get a specific pattern by ID."""
-    result = await db.execute(
-        select(Pattern).where(Pattern.id == pattern_id)
-    )
+    result = await db.execute(select(Pattern).where(Pattern.id == pattern_id))
     pattern = result.scalar_one_or_none()
 
     if not pattern:
