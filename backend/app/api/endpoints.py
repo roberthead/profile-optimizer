@@ -11,6 +11,7 @@ from app.agents.profile_chat import ProfileChatAgent
 from app.agents.url_processing import UrlProcessingAgent
 from app.agents.question_deck import QuestionDeckAgent
 from app.agents.pattern_finder import PatternFinderAgent
+from app.services.question_queue import QuestionQueueBuilder
 from app.models import Member, ProfileCompleteness, ConversationHistory, QuestionDeck, Question, SocialLink, Pattern, PatternCategory
 from pydantic import BaseModel
 from typing import Optional, List
@@ -552,6 +553,75 @@ async def get_deck(
         ],
         created_at=deck.created_at,
     )
+
+
+# Question Queue endpoint
+
+class QueuedQuestionPatternModel(BaseModel):
+    id: int
+    name: str
+    relationship: str
+    affinity: Optional[float] = None
+
+
+class QueuedQuestionModel(BaseModel):
+    position: int
+    question_id: int
+    question_text: str
+    type: str
+    category: str
+    difficulty: int
+    options: List[str]
+    blank_prompt: Optional[str]
+    score: float
+    reason: str
+    reason_detail: str
+    related_patterns: List[QueuedQuestionPatternModel]
+
+
+class ProfileGapModel(BaseModel):
+    field: str
+    label: str
+
+
+class HighAffinityPatternModel(BaseModel):
+    id: int
+    name: str
+    affinity: float
+
+
+class QueueScoringModel(BaseModel):
+    total_available: int
+    already_answered: int
+    pattern_memberships: int
+    high_affinity_patterns: List[HighAffinityPatternModel]
+    profile_gaps: List[ProfileGapModel]
+
+
+class QuestionQueueResponse(BaseModel):
+    member_id: int
+    member_name: str
+    queue: List[QueuedQuestionModel]
+    scoring_summary: QueueScoringModel
+
+
+@router.get("/questions/queue/{member_id}", response_model=QuestionQueueResponse)
+async def get_question_queue(
+    member_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get a scored and sequenced question queue for a member.
+
+    Returns the top 10 questions optimized to learn the most about
+    this member relative to community patterns.
+    """
+    builder = QuestionQueueBuilder(db)
+    result = await builder.build_queue(member_id)
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    return QuestionQueueResponse(**result)
 
 
 # Admin endpoints
