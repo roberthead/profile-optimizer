@@ -13,13 +13,15 @@ validate-backend: lint-backend test-backend ## Run all backend checks
 
 validate-frontend: lint-frontend typecheck-frontend test-frontend ## Run all frontend checks
 
+VENV := backend/venv/bin
+
 # ── Backend ──────────────────────────────────────────────────
 
 lint-backend: ## Run ruff linter and formatter check
-	cd backend && ruff check . && ruff format --check .
+	cd backend && $(CURDIR)/$(VENV)/ruff check . && $(CURDIR)/$(VENV)/ruff format --check .
 
 test-backend: ## Run backend pytest suite
-	cd backend && python -m pytest
+	cd backend && $(CURDIR)/$(VENV)/python -m pytest
 
 # ── Frontend ─────────────────────────────────────────────────
 
