@@ -232,11 +232,15 @@ export const Patterns: React.FC = () => {
   const { data: patterns, isLoading } = useQuery({
     queryKey: ['patterns'],
     queryFn: fetchPatterns,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000,
   });
 
   const { data: membersData } = useQuery({
     queryKey: ['members'],
     queryFn: fetchMembers,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000,
   });
 
   const membersMap = React.useMemo(() => {

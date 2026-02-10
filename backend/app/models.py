@@ -38,6 +38,55 @@ class PatternCategory(str, PyEnum):
     CROSS_DOMAIN = "cross_domain"             # Interesting overlaps between different areas
 
 
+class EdgeType(str, PyEnum):
+    """Types of connections between members."""
+    SHARED_SKILL = "shared_skill"
+    SHARED_INTEREST = "shared_interest"
+    COLLABORATION_POTENTIAL = "collaboration_potential"
+    EVENT_CO_ATTENDANCE = "event_co_attendance"
+    INTRODUCED_BY_AGENT = "introduced_by_agent"
+    PATTERN_CONNECTION = "pattern_connection"
+
+
+class SignalType(str, PyEnum):
+    """Types of event interaction signals."""
+    VIEWED = "viewed"
+    CLICKED = "clicked"
+    RSVP = "rsvp"
+    ATTENDED = "attended"
+    SKIPPED = "skipped"
+    SHARED = "shared"
+    ORGANIZED = "organized"
+
+
+class DeliveryChannel(str, PyEnum):
+    """Channels for question delivery."""
+    MOBILE_SWIPE = "mobile_swipe"
+    CLUBHOUSE_DISPLAY = "clubhouse_display"
+    EMAIL = "email"
+    SMS = "sms"
+    WEB_CHAT = "web_chat"
+
+
+class DeliveryStatus(str, PyEnum):
+    """Status of question delivery."""
+    PENDING = "pending"
+    DELIVERED = "delivered"
+    VIEWED = "viewed"
+    ANSWERED = "answered"
+    SKIPPED = "skipped"
+    EXPIRED = "expired"
+
+
+class QuestionVibe(str, PyEnum):
+    """Vibe/tone of questions for matching to member energy."""
+    WARM = "warm"           # Friendly, approachable
+    PLAYFUL = "playful"     # Fun, light-hearted
+    DEEP = "deep"           # Thoughtful, introspective
+    EDGY = "edgy"           # Provocative, challenging
+    CONNECTOR = "connector" # About relationships/introductions
+
+
 class Member(Base):
     __tablename__ = "members"
 
@@ -67,6 +116,12 @@ class Member(Base):
     skills: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=list)
     interests: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=list)
     all_traits: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=list)
+
+    # Engagement rewards
+    cafe_drops: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0)
+    drops_earned_today: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0)
+    last_drop_earned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    streak_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
@@ -187,6 +242,13 @@ class Question(Base):
     potential_insights: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), default=list)
     related_profile_fields: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=list)
 
+    # NEW: Graph-aware targeting context
+    relevant_member_ids: Mapped[Optional[List[int]]] = mapped_column(ARRAY(Integer), default=list)  # Members this question is about
+    notes: Mapped[Optional[str]] = mapped_column(Text)  # Why we're asking this (context for display)
+    edge_context: Mapped[Optional[dict]] = mapped_column(JSON)  # {edge_id, edge_type, connected_member_name}
+    targeting_criteria: Mapped[Optional[dict]] = mapped_column(JSON)  # {pattern_ids, skill_match, randomness_weight}
+    vibe: Mapped[Optional[QuestionVibe]] = mapped_column(Enum(QuestionVibe), nullable=True)  # Tone of the question
+
     # Ordering and status
     order_index: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -241,8 +303,143 @@ class Pattern(Base):
     # For question generation
     question_prompts: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), default=list)
 
+    # Graph metadata (new)
+    edge_count: Mapped[int] = mapped_column(Integer, default=0)  # How many edges created from this pattern
+    question_count: Mapped[int] = mapped_column(Integer, default=0)  # Questions generated from this
+    last_question_generated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    vitality_score: Mapped[float] = mapped_column(Integer, default=50)  # 0-100, how "alive" this pattern is
+
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+
+# =============================================================================
+# GRAPH SYSTEM MODELS (Wave 1)
+# =============================================================================
+
+class MemberEdge(Base):
+    """Connections between members in the community graph."""
+    __tablename__ = "member_edges"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+
+    # The two connected members
+    member_a_id: Mapped[int] = mapped_column(ForeignKey("members.id"), index=True)
+    member_b_id: Mapped[int] = mapped_column(ForeignKey("members.id"), index=True)
+
+    # Edge properties
+    edge_type: Mapped[EdgeType] = mapped_column(Enum(EdgeType), index=True)
+    strength: Mapped[float] = mapped_column(Integer, default=50)  # 0-100 (stored as int for simplicity)
+    discovered_via: Mapped[str] = mapped_column(String(100))  # "pattern_finder", "question_response", "event_signal", etc.
+
+    # Evidence of why this edge exists
+    evidence: Mapped[Optional[dict]] = mapped_column(JSON)  # {pattern_id, question_id, shared_skills, notes}
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+    # Relationships
+    member_a: Mapped["Member"] = relationship(foreign_keys=[member_a_id], backref="edges_as_a")
+    member_b: Mapped["Member"] = relationship(foreign_keys=[member_b_id], backref="edges_as_b")
+
+
+class TasteProfile(Base):
+    """Evolving taste/preference profile for a member."""
+    __tablename__ = "taste_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), unique=True, index=True)
+
+    # Explicit preferences (from interviews/conversations)
+    vibe_words: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=list)  # ["cozy", "weird", "intimate"]
+    avoid_words: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=list)  # ["crowded", "loud"]
+    energy_time: Mapped[Optional[str]] = mapped_column(String(50))  # "morning", "afternoon", "evening", "night"
+    usual_company: Mapped[Optional[str]] = mapped_column(String(50))  # "solo", "duo", "group", "varies"
+    spontaneity: Mapped[int] = mapped_column(Integer, default=50)  # 0 (planner) to 100 (spontaneous)
+
+    # Anti-preferences (dealbreakers) - underrated!
+    dealbreakers: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=list)  # ["standing room", "cash only"]
+    not_my_thing: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=list)  # Things they just don't get
+
+    # Implicit preferences (learned from behavior) - JSON for flexibility
+    category_affinities: Mapped[Optional[dict]] = mapped_column(JSON)  # {"Live Music": 80, "Workshops": 30}
+    venue_affinities: Mapped[Optional[dict]] = mapped_column(JSON)  # {"Varsity Theatre": 90}
+    organizer_affinities: Mapped[Optional[dict]] = mapped_column(JSON)  # {"Ashland Folk Collective": 80}
+    price_comfort: Mapped[Optional[dict]] = mapped_column(JSON)  # {"min": 0, "max": 50, "sweet_spot": 15}
+
+    # Contextual state (temporary)
+    current_mood: Mapped[Optional[str]] = mapped_column(String(100))
+    this_week_energy: Mapped[Optional[str]] = mapped_column(String(50))  # "low", "medium", "high"
+    visitors_in_town: Mapped[bool] = mapped_column(Boolean, default=False)
+    context_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+    # Relationship
+    member: Mapped["Member"] = relationship(backref="taste_profile")
+
+
+class EventSignal(Base):
+    """Tracks member interactions with Rova events for behavioral learning."""
+    __tablename__ = "event_signals"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), index=True)
+
+    # Rova event reference
+    rova_event_id: Mapped[str] = mapped_column(String(100), index=True)  # "event.xxx"
+    rova_event_slug: Mapped[str] = mapped_column(String(255))
+
+    # Signal type and strength
+    signal_type: Mapped[SignalType] = mapped_column(Enum(SignalType), index=True)
+    signal_strength: Mapped[int] = mapped_column(Integer)  # 100 for attended, 50 for RSVP, -30 for skipped
+
+    # Denormalized event context for analysis (avoid joins)
+    event_category: Mapped[Optional[str]] = mapped_column(String(100))
+    event_venue_slug: Mapped[Optional[str]] = mapped_column(String(255))
+    event_organizer_slug: Mapped[Optional[str]] = mapped_column(String(255))
+    event_tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=list)
+    event_time_of_day: Mapped[Optional[str]] = mapped_column(String(50))  # "morning", "afternoon", "evening", "night"
+    event_day_of_week: Mapped[Optional[str]] = mapped_column(String(20))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationship
+    member: Mapped["Member"] = relationship(backref="event_signals")
+
+
+class QuestionDelivery(Base):
+    """Tracks multi-channel question delivery and responses."""
+    __tablename__ = "question_deliveries"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id"), index=True)
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), index=True)
+
+    # Delivery info
+    channel: Mapped[DeliveryChannel] = mapped_column(Enum(DeliveryChannel), index=True)
+    delivery_status: Mapped[DeliveryStatus] = mapped_column(Enum(DeliveryStatus), default=DeliveryStatus.PENDING)
+
+    # Timestamps for funnel analysis
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    viewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    answered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    # Response data
+    response_type: Mapped[Optional[str]] = mapped_column(String(50))  # "yes", "no", "skip", "text", "choice"
+    response_value: Mapped[Optional[str]] = mapped_column(Text)
+    response_time_seconds: Mapped[Optional[int]] = mapped_column(Integer)  # How long they took
+
+    # Why this question was selected for this member
+    targeting_context: Mapped[Optional[dict]] = mapped_column(JSON)  # {pattern_id, edge_id, relevance_score}
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    question: Mapped["Question"] = relationship(backref="deliveries")
+    member: Mapped["Member"] = relationship(backref="question_deliveries")

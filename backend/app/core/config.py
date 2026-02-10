@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     WHITE_RABBIT_API_URL: str = "https://whiterabbitashland.com/api"
     WHITE_RABBIT_API_KEY: Optional[str] = None
 
+    # Rova Events API
+    ROVA_API_URL: str = "https://rova.live/api/public"
+    ROVA_API_KEY: Optional[str] = None
+    ROVA_PUBLIC_KEY: Optional[str] = None
+
     model_config = SettingsConfigDict(env_file=str(ENV_FILE), case_sensitive=True)
 
     def get_database_url(self) -> str:

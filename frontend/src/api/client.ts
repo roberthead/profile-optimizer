@@ -7,6 +7,9 @@ export const api = axios.create({
   baseURL,
 });
 
+// Default export for convenience
+export default api;
+
 // Hook to use API with Auth
 export const useApi = () => {
   const { getToken } = useAuth();
