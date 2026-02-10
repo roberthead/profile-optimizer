@@ -79,6 +79,7 @@ When generating questions, provide:
 - follow_up_prompts: 1-2 probing follow-ups if the initial answer is brief
 - potential_insights: What you might learn from the answer
 - related_profile_fields: Which profile fields this might help fill (bio, skills, interests, etc.)
+- related_pattern_ids: Array of pattern IDs (from get_active_patterns) that this question explores or deepens. Tag each question with the IDs of patterns it relates to. This enables the question queue to prioritize questions by pattern relevance per member.
 
 ## Context Awareness
 
@@ -402,6 +403,7 @@ Use save_question_deck to save the refined deck with:
                 follow_up_prompts=q.get("follow_up_prompts", []),
                 potential_insights=q.get("potential_insights", []),
                 related_profile_fields=q.get("related_profile_fields", []),
+                related_pattern_ids=q.get("related_pattern_ids", []),
                 order_index=idx,
             )
             self.db.add(question)

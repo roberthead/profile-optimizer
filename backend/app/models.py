@@ -186,6 +186,7 @@ class Question(Base):
     follow_up_prompts: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), default=list)
     potential_insights: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), default=list)
     related_profile_fields: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=list)
+    related_pattern_ids: Mapped[Optional[List[int]]] = mapped_column(ARRAY(Integer), default=list)
 
     # Ordering and status
     order_index: Mapped[int] = mapped_column(Integer, default=0)

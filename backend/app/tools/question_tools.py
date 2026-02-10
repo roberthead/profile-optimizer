@@ -265,7 +265,12 @@ SAVE_QUESTION_DECK_TOOL = {
                         "purpose": {"type": "string"},
                         "follow_up_prompts": {"type": "array", "items": {"type": "string"}},
                         "potential_insights": {"type": "array", "items": {"type": "string"}},
-                        "related_profile_fields": {"type": "array", "items": {"type": "string"}}
+                        "related_profile_fields": {"type": "array", "items": {"type": "string"}},
+                        "related_pattern_ids": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                            "description": "IDs of patterns this question explores or deepens. Use pattern IDs from get_active_patterns."
+                        }
                     },
                     "required": ["question_text", "question_type", "category", "purpose"]
                 },

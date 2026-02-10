@@ -17,6 +17,7 @@ import {
   Network,
   Zap,
 } from 'lucide-react';
+import { QuestionQueue } from '../components/QuestionQueue';
 
 interface MemberDetailData {
   id: number;
@@ -331,6 +332,9 @@ export const MemberDetail: React.FC = () => {
           </div>
         </Section>
       )}
+
+      {/* Question Queue */}
+      <QuestionQueue memberId={member.id} />
 
       {/* Debug Info (collapsible) */}
       <details className="bg-gray-100 rounded-xl p-4">
