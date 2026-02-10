@@ -60,7 +60,7 @@ class ProfileEvaluationAgent:
         field_data = get_field_completeness(member)
 
         # Build the prompt
-        user_message = f"""Please evaluate the profile health for member: {field_data['member_name']}
+        user_message = f"""Please evaluate the profile health for member: {field_data["member_name"]}
 
 First, use the get_field_completeness tool to check the current state of their profile fields, then provide your assessment."""
 
@@ -79,8 +79,7 @@ First, use the get_field_completeness tool to check the current state of their p
         while response.stop_reason == "tool_use":
             # Find the tool use block
             tool_use_block = next(
-                (block for block in response.content if block.type == "tool_use"),
-                None
+                (block for block in response.content if block.type == "tool_use"), None
             )
 
             if tool_use_block and tool_use_block.name == "get_field_completeness":
@@ -89,14 +88,18 @@ First, use the get_field_completeness tool to check the current state of their p
 
                 # Continue the conversation with the tool result
                 messages.append({"role": "assistant", "content": response.content})
-                messages.append({
-                    "role": "user",
-                    "content": [{
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_block.id,
-                        "content": json.dumps(tool_result),
-                    }]
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tool_use_block.id,
+                                "content": json.dumps(tool_result),
+                            }
+                        ],
+                    }
+                )
 
                 response = self.client.messages.create(
                     model=self.model,
@@ -123,12 +126,19 @@ First, use the get_field_completeness tool to check the current state of their p
 
         return evaluation_result
 
-    def _parse_assessment(self, assessment_text: str, field_data: dict) -> dict[str, Any]:
+    def _parse_assessment(
+        self, assessment_text: str, field_data: dict
+    ) -> dict[str, Any]:
         """Parse the LLM's assessment into structured data."""
         # Try to extract a score from the text
         import re
-        score_match = re.search(r'(\d{1,3})%', assessment_text)
-        score = int(score_match.group(1)) if score_match else field_data["basic_completeness_percentage"]
+
+        score_match = re.search(r"(\d{1,3})%", assessment_text)
+        score = (
+            int(score_match.group(1))
+            if score_match
+            else field_data["basic_completeness_percentage"]
+        )
 
         # Ensure score is in valid range
         score = max(0, min(100, score))
@@ -147,13 +157,23 @@ First, use the get_field_completeness tool to check the current state of their p
         from datetime import datetime
 
         result = await self.db.execute(
-            select(ProfileCompleteness).where(ProfileCompleteness.member_id == member_id)
+            select(ProfileCompleteness).where(
+                ProfileCompleteness.member_id == member_id
+            )
         )
         profile_completeness = result.scalar_one_or_none()
 
         missing_fields_data = {
-            "required": [f for f in evaluation["empty_fields"] if f in ["First Name", "Last Name", "Email"]],
-            "optional": [f for f in evaluation["empty_fields"] if f not in ["First Name", "Last Name", "Email"]],
+            "required": [
+                f
+                for f in evaluation["empty_fields"]
+                if f in ["First Name", "Last Name", "Email"]
+            ],
+            "optional": [
+                f
+                for f in evaluation["empty_fields"]
+                if f not in ["First Name", "Last Name", "Email"]
+            ],
         }
 
         if profile_completeness:
@@ -167,7 +187,7 @@ First, use the get_field_completeness tool to check the current state of their p
                 completeness_score=evaluation["completeness_score"],
                 missing_fields=missing_fields_data,
                 assessment=evaluation["assessment"],
-                last_calculated=datetime.utcnow()
+                last_calculated=datetime.utcnow(),
             )
             self.db.add(profile_completeness)
 

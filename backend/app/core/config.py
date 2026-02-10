@@ -6,6 +6,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 ENV_FILE = PROJECT_ROOT / ".env"
 
+
 class Settings(BaseSettings):
     PROJECT_NAME: str = "White Rabbit Profile Optimizer"
     API_V1_STR: str = "/api/v1"
@@ -20,8 +21,8 @@ class Settings(BaseSettings):
     # Auth (Clerk)
     CLERK_PUBLISHABLE_KEY: Optional[str] = None
     CLERK_SECRET_KEY: Optional[str] = None
-    CLERK_ISSUER: Optional[str] = None # e.g. https://clerk.whiterabbit.com
-    CLERK_JWKS_URL: Optional[str] = None # Auto-derived usually, but good to have
+    CLERK_ISSUER: Optional[str] = None  # e.g. https://clerk.whiterabbit.com
+    CLERK_JWKS_URL: Optional[str] = None  # Auto-derived usually, but good to have
 
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = []
@@ -39,5 +40,6 @@ class Settings(BaseSettings):
         if self.DATABASE_URL:
             return self.DATABASE_URL
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}/{self.POSTGRES_DB}"
+
 
 settings = Settings()

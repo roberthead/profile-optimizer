@@ -3,9 +3,16 @@
 import pytest
 import asyncio
 from unittest.mock import MagicMock, AsyncMock
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Member, QuestionDeck, Question, QuestionCategory, Pattern, PatternCategory
+from app.models import (
+    Member,
+    QuestionDeck,
+    Question,
+    QuestionCategory,
+    Pattern,
+    PatternCategory,
+)
 
 
 @pytest.fixture(scope="session")
@@ -102,11 +109,16 @@ def sample_question_deck():
 def sample_questions():
     """Create sample questions for testing."""
     questions = []
-    for i, (category, text) in enumerate([
-        (QuestionCategory.ORIGIN_STORY, "What brought you to this community?"),
-        (QuestionCategory.CREATIVE_SPARK, "What project are you most proud of?"),
-        (QuestionCategory.COLLABORATION, "What kind of collaborator are you looking for?"),
-    ]):
+    for i, (category, text) in enumerate(
+        [
+            (QuestionCategory.ORIGIN_STORY, "What brought you to this community?"),
+            (QuestionCategory.CREATIVE_SPARK, "What project are you most proud of?"),
+            (
+                QuestionCategory.COLLABORATION,
+                "What kind of collaborator are you looking for?",
+            ),
+        ]
+    ):
         q = MagicMock(spec=Question)
         q.id = i + 1
         q.question_text = text

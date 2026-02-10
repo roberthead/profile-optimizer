@@ -1,6 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import ConversationHistory
-from typing import List
+
 
 class InteractiveAgent:
     def __init__(self, db: AsyncSession):

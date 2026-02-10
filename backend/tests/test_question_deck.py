@@ -2,7 +2,6 @@
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.tools.question_tools import (
     get_community_profile_analysis,
@@ -12,14 +11,16 @@ from app.tools.question_tools import (
     SAVE_QUESTION_DECK_TOOL,
 )
 from app.agents.question_deck import QuestionDeckAgent
-from app.models import Member, QuestionDeck, Question, QuestionCategory
+from app.models import QuestionCategory
 
 
 class TestQuestionTools:
     """Tests for question generation tools."""
 
     @pytest.mark.asyncio
-    async def test_get_community_profile_analysis_structure(self, mock_db_session, sample_members):
+    async def test_get_community_profile_analysis_structure(
+        self, mock_db_session, sample_members
+    ):
         """Test that community analysis returns expected structure."""
         # Setup mock to return sample members
         mock_result = MagicMock()
@@ -37,7 +38,9 @@ class TestQuestionTools:
         assert "unique_interests" in result
 
     @pytest.mark.asyncio
-    async def test_get_community_profile_analysis_counts_fields(self, mock_db_session, sample_members):
+    async def test_get_community_profile_analysis_counts_fields(
+        self, mock_db_session, sample_members
+    ):
         """Test that community analysis correctly counts field completion."""
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = sample_members
@@ -53,7 +56,9 @@ class TestQuestionTools:
         assert rates["bio"]["total"] == 3
 
     @pytest.mark.asyncio
-    async def test_get_community_profile_analysis_aggregates_skills(self, mock_db_session, sample_members):
+    async def test_get_community_profile_analysis_aggregates_skills(
+        self, mock_db_session, sample_members
+    ):
         """Test that community analysis aggregates skills correctly."""
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = sample_members
@@ -66,7 +71,9 @@ class TestQuestionTools:
         assert "Python" in common_skills or "UX" in common_skills
 
     @pytest.mark.asyncio
-    async def test_get_member_gaps_identifies_missing_fields(self, mock_db_session, sample_member_with_gaps):
+    async def test_get_member_gaps_identifies_missing_fields(
+        self, mock_db_session, sample_member_with_gaps
+    ):
         """Test that member gaps analysis identifies missing fields."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = sample_member_with_gaps
@@ -83,7 +90,9 @@ class TestQuestionTools:
         assert "skills" in gap_fields
 
     @pytest.mark.asyncio
-    async def test_get_member_gaps_complete_profile(self, mock_db_session, sample_member):
+    async def test_get_member_gaps_complete_profile(
+        self, mock_db_session, sample_member
+    ):
         """Test that member gaps analysis works for complete profiles."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = sample_member
@@ -108,7 +117,11 @@ class TestQuestionTools:
 
     def test_tool_definitions_have_required_fields(self):
         """Test that tool definitions have all required fields for Claude API."""
-        for tool in [GET_COMMUNITY_ANALYSIS_TOOL, GET_MEMBER_GAPS_TOOL, SAVE_QUESTION_DECK_TOOL]:
+        for tool in [
+            GET_COMMUNITY_ANALYSIS_TOOL,
+            GET_MEMBER_GAPS_TOOL,
+            SAVE_QUESTION_DECK_TOOL,
+        ]:
             assert "name" in tool
             assert "description" in tool
             assert "input_schema" in tool
@@ -137,7 +150,7 @@ class TestQuestionDeckAgent:
     @pytest.mark.asyncio
     async def test_agent_initialization(self, mock_db_session):
         """Test that agent initializes correctly."""
-        with patch('app.agents.question_deck.anthropic.Anthropic'):
+        with patch("app.agents.question_deck.anthropic.Anthropic"):
             agent = QuestionDeckAgent(mock_db_session)
             assert agent.db == mock_db_session
             assert agent.model == "claude-opus-4-5"
@@ -149,7 +162,7 @@ class TestQuestionDeckAgent:
         mock_result.scalar_one_or_none.return_value = None
         mock_db_session.execute = AsyncMock(return_value=mock_result)
 
-        with patch('app.agents.question_deck.anthropic.Anthropic'):
+        with patch("app.agents.question_deck.anthropic.Anthropic"):
             agent = QuestionDeckAgent(mock_db_session)
 
             with pytest.raises(ValueError, match="not found"):
@@ -162,47 +175,47 @@ class TestQuestionDeckAgent:
         mock_result.scalar_one_or_none.return_value = None
         mock_db_session.execute = AsyncMock(return_value=mock_result)
 
-        with patch('app.agents.question_deck.anthropic.Anthropic'):
+        with patch("app.agents.question_deck.anthropic.Anthropic"):
             agent = QuestionDeckAgent(mock_db_session)
 
             with pytest.raises(ValueError, match="not found"):
                 await agent.refine_deck(deck_id=99999, feedback="test")
 
     @pytest.mark.asyncio
-    async def test_execute_tool_community_analysis(self, mock_db_session, sample_members):
+    async def test_execute_tool_community_analysis(
+        self, mock_db_session, sample_members
+    ):
         """Test that _execute_tool handles community analysis correctly."""
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = sample_members
         mock_db_session.execute = AsyncMock(return_value=mock_result)
 
-        with patch('app.agents.question_deck.anthropic.Anthropic'):
+        with patch("app.agents.question_deck.anthropic.Anthropic"):
             agent = QuestionDeckAgent(mock_db_session)
             result_dict = {"analysis_context": None}
 
             tool_result = await agent._execute_tool(
-                "get_community_profile_analysis",
-                {},
-                result_dict
+                "get_community_profile_analysis", {}, result_dict
             )
 
             assert "total_active_members" in tool_result
             assert result_dict["analysis_context"] is not None
 
     @pytest.mark.asyncio
-    async def test_execute_tool_member_gaps(self, mock_db_session, sample_member_with_gaps):
+    async def test_execute_tool_member_gaps(
+        self, mock_db_session, sample_member_with_gaps
+    ):
         """Test that _execute_tool handles member gaps correctly."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = sample_member_with_gaps
         mock_db_session.execute = AsyncMock(return_value=mock_result)
 
-        with patch('app.agents.question_deck.anthropic.Anthropic'):
+        with patch("app.agents.question_deck.anthropic.Anthropic"):
             agent = QuestionDeckAgent(mock_db_session)
             result_dict = {}
 
             tool_result = await agent._execute_tool(
-                "get_member_gaps",
-                {"member_id": 2},
-                result_dict
+                "get_member_gaps", {"member_id": 2}, result_dict
             )
 
             assert tool_result["member_id"] == 2
@@ -211,15 +224,11 @@ class TestQuestionDeckAgent:
     @pytest.mark.asyncio
     async def test_execute_tool_unknown_tool(self, mock_db_session):
         """Test that _execute_tool handles unknown tools."""
-        with patch('app.agents.question_deck.anthropic.Anthropic'):
+        with patch("app.agents.question_deck.anthropic.Anthropic"):
             agent = QuestionDeckAgent(mock_db_session)
             result_dict = {}
 
-            tool_result = await agent._execute_tool(
-                "unknown_tool",
-                {},
-                result_dict
-            )
+            tool_result = await agent._execute_tool("unknown_tool", {}, result_dict)
 
             assert "error" in tool_result
 
@@ -231,7 +240,7 @@ class TestQuestionDeckAgent:
         mock_db_session.commit = AsyncMock()
         mock_db_session.refresh = AsyncMock()
 
-        with patch('app.agents.question_deck.anthropic.Anthropic'):
+        with patch("app.agents.question_deck.anthropic.Anthropic"):
             agent = QuestionDeckAgent(mock_db_session)
 
             tool_input = {
@@ -249,7 +258,7 @@ class TestQuestionDeckAgent:
                         "category": "creative_spark",
                         "purpose": "Understand motivation",
                     },
-                ]
+                ],
             }
 
             await agent._save_deck(tool_input)

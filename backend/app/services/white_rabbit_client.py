@@ -129,7 +129,9 @@ class WhiteRabbitClient:
 
                     # Handle other client errors (no retry)
                     if 400 <= response.status_code < 500:
-                        logger.error(f"Client error: {response.status_code} - {response.text}")
+                        logger.error(
+                            f"Client error: {response.status_code} - {response.text}"
+                        )
                         raise WhiteRabbitAPIError(
                             f"API error: {response.text}",
                             status_code=response.status_code,
@@ -145,7 +147,7 @@ class WhiteRabbitClient:
                             status_code=response.status_code,
                         )
                         if attempt < self.MAX_RETRIES - 1:
-                            await asyncio.sleep(self.RETRY_BACKOFF_BASE ** attempt)
+                            await asyncio.sleep(self.RETRY_BACKOFF_BASE**attempt)
                             continue
                         raise last_exception
 
@@ -154,17 +156,21 @@ class WhiteRabbitClient:
                     return response.json()
 
             except httpx.TimeoutException as e:
-                logger.warning(f"Request timeout, attempt {attempt + 1}/{self.MAX_RETRIES}")
+                logger.warning(
+                    f"Request timeout, attempt {attempt + 1}/{self.MAX_RETRIES}"
+                )
                 last_exception = WhiteRabbitAPIError(f"Request timeout: {e}")
                 if attempt < self.MAX_RETRIES - 1:
-                    await asyncio.sleep(self.RETRY_BACKOFF_BASE ** attempt)
+                    await asyncio.sleep(self.RETRY_BACKOFF_BASE**attempt)
                     continue
 
             except httpx.RequestError as e:
-                logger.warning(f"Request error: {e}, attempt {attempt + 1}/{self.MAX_RETRIES}")
+                logger.warning(
+                    f"Request error: {e}, attempt {attempt + 1}/{self.MAX_RETRIES}"
+                )
                 last_exception = WhiteRabbitAPIError(f"Request failed: {e}")
                 if attempt < self.MAX_RETRIES - 1:
-                    await asyncio.sleep(self.RETRY_BACKOFF_BASE ** attempt)
+                    await asyncio.sleep(self.RETRY_BACKOFF_BASE**attempt)
                     continue
 
         # All retries exhausted
@@ -297,7 +303,9 @@ class WhiteRabbitClient:
             WhiteRabbitAuthError: If authentication fails.
             WhiteRabbitAPIError: For other API errors.
         """
-        logger.info(f"Posting question to White Rabbit: {question_data.get('questionText', '')[:50]}")
+        logger.info(
+            f"Posting question to White Rabbit: {question_data.get('questionText', '')[:50]}"
+        )
         return await self._request("POST", "/profile/questions", json=question_data)
 
     async def health_check(self) -> bool:

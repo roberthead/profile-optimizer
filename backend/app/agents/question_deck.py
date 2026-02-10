@@ -127,7 +127,7 @@ class QuestionDeckAgent:
         deck_name: str = "Community Discovery Deck",
         description: Optional[str] = None,
         num_questions: int = 20,
-        focus_categories: Optional[List[str]] = None
+        focus_categories: Optional[List[str]] = None,
     ) -> dict[str, Any]:
         """
         Generate a global question deck by analyzing all member profiles.
@@ -172,15 +172,13 @@ When incorporating patterns, use them as inspiration to craft questions that fee
 
 After generating the questions, use save_question_deck to persist them with:
 - Name: "{deck_name}"
-- Description: {f'"{description}"' if description else 'A description explaining the deck\'s purpose, what analysis informed it, and which patterns it explores'}
+- Description: {('"' + description + '"') if description else "A description explaining the deck's purpose, what analysis informed it, and which patterns it explores"}
 - The complete list of questions"""
 
         return await self._execute_with_tools(user_message)
 
     async def generate_personalized_deck(
-        self,
-        member_id: int,
-        num_questions: int = 10
+        self, member_id: int, num_questions: int = 10
     ) -> dict[str, Any]:
         """
         Generate a personalized question deck for a specific member.
@@ -198,7 +196,10 @@ After generating the questions, use save_question_deck to persist them with:
         if not member:
             raise ValueError(f"Member with id {member_id} not found")
 
-        member_name = f"{member.first_name or ''} {member.last_name or ''}".strip() or member.email
+        member_name = (
+            f"{member.first_name or ''} {member.last_name or ''}".strip()
+            or member.email
+        )
 
         user_message = f"""Please generate a personalized question deck for member {member_name} (ID: {member_id}).
 
@@ -221,11 +222,7 @@ After generating the questions, use save_question_deck to persist them with:
 
         return await self._execute_with_tools(user_message)
 
-    async def refine_deck(
-        self,
-        deck_id: int,
-        feedback: str
-    ) -> dict[str, Any]:
+    async def refine_deck(self, deck_id: int, feedback: str) -> dict[str, Any]:
         """
         Refine an existing deck based on feedback.
 
@@ -246,7 +243,9 @@ After generating the questions, use save_question_deck to persist them with:
 
         # Get existing questions
         result = await self.db.execute(
-            select(Question).where(Question.deck_id == deck_id).order_by(Question.order_index)
+            select(Question)
+            .where(Question.deck_id == deck_id)
+            .order_by(Question.order_index)
         )
         existing_questions = result.scalars().all()
 
@@ -261,7 +260,9 @@ After generating the questions, use save_question_deck to persist them with:
             for q in existing_questions
         ]
 
-        member_id_str = f"member_id: {deck.member_id}" if deck.member_id else "null (global deck)"
+        member_id_str = (
+            f"member_id: {deck.member_id}" if deck.member_id else "null (global deck)"
+        )
 
         user_message = f"""Please help refine the question deck "{deck.name}".
 
@@ -285,7 +286,12 @@ Use save_question_deck to save the refined deck with:
 
     async def _execute_with_tools(self, user_message: str) -> dict[str, Any]:
         """Execute a conversation with tool use."""
-        tools = [GET_COMMUNITY_ANALYSIS_TOOL, GET_MEMBER_GAPS_TOOL, GET_ACTIVE_PATTERNS_TOOL, SAVE_QUESTION_DECK_TOOL]
+        tools = [
+            GET_COMMUNITY_ANALYSIS_TOOL,
+            GET_MEMBER_GAPS_TOOL,
+            GET_ACTIVE_PATTERNS_TOOL,
+            SAVE_QUESTION_DECK_TOOL,
+        ]
         messages = [{"role": "user", "content": user_message}]
 
         result = {
@@ -310,12 +316,16 @@ Use save_question_deck to save the refined deck with:
 
             for block in response.content:
                 if block.type == "tool_use":
-                    tool_result = await self._execute_tool(block.name, block.input, result)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(tool_result),
-                    })
+                    tool_result = await self._execute_tool(
+                        block.name, block.input, result
+                    )
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": json.dumps(tool_result),
+                        }
+                    )
 
             # Continue conversation with tool results
             messages.append({"role": "assistant", "content": response.content})
@@ -338,10 +348,7 @@ Use save_question_deck to save the refined deck with:
         return result
 
     async def _execute_tool(
-        self,
-        tool_name: str,
-        tool_input: dict,
-        result: dict
+        self, tool_name: str, tool_input: dict, result: dict
     ) -> dict:
         """Execute a tool and return the result."""
 
@@ -368,7 +375,7 @@ Use save_question_deck to save the refined deck with:
             return {
                 "success": True,
                 "deck_id": deck.id,
-                "message": f"Saved deck with {result['questions_generated']} questions"
+                "message": f"Saved deck with {result['questions_generated']} questions",
             }
 
         return {"error": f"Unknown tool: {tool_name}"}
@@ -395,8 +402,12 @@ Use save_question_deck to save the refined deck with:
                 question_text=q["question_text"],
                 category=QuestionCategory(q["category"]),
                 question_type=question_type,
-                options=q.get("options", []) if question_type == QuestionType.MULTIPLE_CHOICE else [],
-                blank_prompt=q.get("blank_prompt") if question_type == QuestionType.FILL_IN_BLANK else None,
+                options=q.get("options", [])
+                if question_type == QuestionType.MULTIPLE_CHOICE
+                else [],
+                blank_prompt=q.get("blank_prompt")
+                if question_type == QuestionType.FILL_IN_BLANK
+                else None,
                 difficulty_level=q.get("difficulty_level", 1),
                 estimated_time_minutes=q.get("estimated_time_minutes", 2),
                 purpose=q["purpose"],

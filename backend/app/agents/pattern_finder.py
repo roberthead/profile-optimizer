@@ -117,7 +117,7 @@ After saving all patterns, summarize what you discovered."""
             pattern_context = f"""
 
 EXISTING PATTERNS TO UPDATE:
-The following {existing_patterns['total_patterns']} patterns already exist. When you find members matching these themes, UPDATE the existing pattern by using the EXACT SAME NAME:
+The following {existing_patterns["total_patterns"]} patterns already exist. When you find members matching these themes, UPDATE the existing pattern by using the EXACT SAME NAME:
 {json.dumps(pattern_names, indent=2)}
 
 For each existing pattern, re-evaluate which members should be included based on current profile data. You may also create new patterns if you discover themes not covered by existing ones."""
@@ -165,12 +165,16 @@ After saving all patterns, summarize what you updated or discovered."""
 
             for block in response.content:
                 if block.type == "tool_use":
-                    tool_result = await self._execute_tool(block.name, block.input, result)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(tool_result),
-                    })
+                    tool_result = await self._execute_tool(
+                        block.name, block.input, result
+                    )
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": json.dumps(tool_result),
+                        }
+                    )
 
             # Continue conversation with tool results
             messages.append({"role": "assistant", "content": response.content})
@@ -194,10 +198,7 @@ After saving all patterns, summarize what you updated or discovered."""
         return result
 
     async def _execute_tool(
-        self,
-        tool_name: str,
-        tool_input: dict,
-        result: dict
+        self, tool_name: str, tool_input: dict, result: dict
     ) -> dict:
         """Execute a tool and return the result."""
 
@@ -209,11 +210,13 @@ After saving all patterns, summarize what you updated or discovered."""
             save_result = await save_pattern(self.db, tool_input)
             if "error" not in save_result:
                 result["patterns_found"] += 1
-                result["patterns"].append({
-                    "id": save_result["id"],
-                    "name": save_result["name"],
-                    "created": save_result["created"],
-                })
+                result["patterns"].append(
+                    {
+                        "id": save_result["id"],
+                        "name": save_result["name"],
+                        "created": save_result["created"],
+                    }
+                )
             return save_result
 
         return {"error": f"Unknown tool: {tool_name}"}

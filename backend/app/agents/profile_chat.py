@@ -7,9 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import anthropic
 
-from app.models import Member, ConversationHistory, ProfileSuggestion, ProfileCompleteness
+from app.models import Member, ConversationHistory, ProfileSuggestion
 from app.core.config import settings
-from app.tools.profile_tools import get_field_completeness, FIELD_COMPLETENESS_TOOL, SAVE_PROFILE_SUGGESTION_TOOL
+from app.tools.profile_tools import (
+    get_field_completeness,
+    FIELD_COMPLETENESS_TOOL,
+    SAVE_PROFILE_SUGGESTION_TOOL,
+)
 
 
 SYSTEM_PROMPT = """You are a profile assistant for White Rabbit Ashland—a creative community focused on technology, entrepreneurship, and the arts.
@@ -48,7 +52,9 @@ class ProfileChatAgent:
         self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         self.model = "claude-opus-4-5"
 
-    async def chat(self, member_id: int, message: str, session_id: Optional[str] = None) -> dict[str, Any]:
+    async def chat(
+        self, member_id: int, message: str, session_id: Optional[str] = None
+    ) -> dict[str, Any]:
         """
         Process a chat message and return the agent's response.
 
@@ -107,13 +113,15 @@ class ProfileChatAgent:
                         member_id,
                         session_id,
                         field_data,
-                        suggestions_made
+                        suggestions_made,
                     )
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(tool_result),
-                    })
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": json.dumps(tool_result),
+                        }
+                    )
 
             # Continue conversation with tool results
             messages.append({"role": "assistant", "content": response.content})
@@ -151,7 +159,7 @@ class ProfileChatAgent:
         member_id: int,
         session_id: str,
         field_data: dict,
-        suggestions_made: list
+        suggestions_made: list,
     ) -> dict:
         """Execute a tool and return the result."""
 
@@ -179,12 +187,14 @@ class ProfileChatAgent:
             await self.db.commit()
             await self.db.refresh(suggestion)
 
-            suggestions_made.append({
-                "id": suggestion.id,
-                "field_name": field_name,
-                "suggested_value": tool_input["suggested_value"],
-                "reasoning": tool_input.get("reasoning", ""),
-            })
+            suggestions_made.append(
+                {
+                    "id": suggestion.id,
+                    "field_name": field_name,
+                    "suggested_value": tool_input["suggested_value"],
+                    "reasoning": tool_input.get("reasoning", ""),
+                }
+            )
 
             return {
                 "success": True,
@@ -194,7 +204,9 @@ class ProfileChatAgent:
 
         return {"error": f"Unknown tool: {tool_name}"}
 
-    async def _get_conversation_history(self, member_id: int, session_id: str) -> list[dict]:
+    async def _get_conversation_history(
+        self, member_id: int, session_id: str
+    ) -> list[dict]:
         """Get conversation history for this session."""
         result = await self.db.execute(
             select(ConversationHistory)
@@ -204,12 +216,11 @@ class ProfileChatAgent:
         )
         messages = result.scalars().all()
 
-        return [
-            {"role": msg.role, "content": msg.message_content}
-            for msg in messages
-        ]
+        return [{"role": msg.role, "content": msg.message_content} for msg in messages]
 
-    async def _save_message(self, member_id: int, session_id: str, role: str, content: str) -> None:
+    async def _save_message(
+        self, member_id: int, session_id: str, role: str, content: str
+    ) -> None:
         """Save a message to conversation history."""
         message = ConversationHistory(
             member_id=member_id,
@@ -220,24 +231,31 @@ class ProfileChatAgent:
         self.db.add(message)
         await self.db.commit()
 
-    def _build_messages(self, history: list[dict], current_message: str, field_data: dict) -> list[dict]:
+    def _build_messages(
+        self, history: list[dict], current_message: str, field_data: dict
+    ) -> list[dict]:
         """Build the messages array for Claude."""
         messages = []
 
         # If this is the start of conversation, include context
         if not history:
-            context = f"""This is the start of a conversation with {field_data['member_name']}.
+            context = f"""This is the start of a conversation with {field_data["member_name"]}.
 
-Their profile is currently {field_data['basic_completeness_percentage']}% complete.
+Their profile is currently {field_data["basic_completeness_percentage"]}% complete.
 
-Filled fields: {', '.join(field_data['filled_fields']) if field_data['filled_fields'] else 'None'}
+Filled fields: {", ".join(field_data["filled_fields"]) if field_data["filled_fields"] else "None"}
 
-Empty fields that could be filled: {', '.join(field_data['empty_fields']) if field_data['empty_fields'] else 'All fields are complete!'}
+Empty fields that could be filled: {", ".join(field_data["empty_fields"]) if field_data["empty_fields"] else "All fields are complete!"}
 
 Start by warmly greeting them and asking how you can help with their profile today."""
 
             messages.append({"role": "user", "content": context})
-            messages.append({"role": "assistant", "content": f"Hi {field_data['member_name'].split()[0] if field_data['member_name'] else 'there'}! I'm here to help you build out your White Rabbit profile. I see your profile is about {field_data['basic_completeness_percentage']}% complete - would you like to chat about filling in some of the missing pieces? I'm happy to help with whatever feels most relevant to you."})
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": f"Hi {field_data['member_name'].split()[0] if field_data['member_name'] else 'there'}! I'm here to help you build out your White Rabbit profile. I see your profile is about {field_data['basic_completeness_percentage']}% complete - would you like to chat about filling in some of the missing pieces? I'm happy to help with whatever feels most relevant to you.",
+                }
+            )
 
         # Add conversation history
         for msg in history:

@@ -15,28 +15,45 @@ def get_field_completeness(member: Member) -> dict[str, Any]:
         "first_name": {"label": "First Name", "category": "identity", "required": True},
         "last_name": {"label": "Last Name", "category": "identity", "required": True},
         "email": {"label": "Email", "category": "identity", "required": True},
-
         # Core profile fields
         "bio": {"label": "Bio", "category": "core", "required": False},
         "role": {"label": "Role/Title", "category": "core", "required": False},
         "location": {"label": "Location", "category": "core", "required": False},
-
         # Professional fields
         "company": {"label": "Company", "category": "professional", "required": False},
         "website": {"label": "Website", "category": "professional", "required": False},
-
         # Visual
-        "profile_photo_url": {"label": "Profile Photo", "category": "visual", "required": False},
+        "profile_photo_url": {
+            "label": "Profile Photo",
+            "category": "visual",
+            "required": False,
+        },
     }
 
     # Array fields need special handling
     ARRAY_FIELDS = {
         "skills": {"label": "Skills", "category": "discoverability", "required": False},
-        "interests": {"label": "Interests", "category": "discoverability", "required": False},
+        "interests": {
+            "label": "Interests",
+            "category": "discoverability",
+            "required": False,
+        },
         "urls": {"label": "URLs/Links", "category": "professional", "required": False},
-        "prompt_responses": {"label": "Prompt Responses", "category": "rich_content", "required": False},
-        "roles": {"label": "Community Roles", "category": "community", "required": False},
-        "all_traits": {"label": "Traits", "category": "discoverability", "required": False},
+        "prompt_responses": {
+            "label": "Prompt Responses",
+            "category": "rich_content",
+            "required": False,
+        },
+        "roles": {
+            "label": "Community Roles",
+            "category": "community",
+            "required": False,
+        },
+        "all_traits": {
+            "label": "Traits",
+            "category": "discoverability",
+            "required": False,
+        },
     }
 
     filled_fields = []
@@ -84,7 +101,8 @@ def get_field_completeness(member: Member) -> dict[str, Any]:
 
     return {
         "member_id": member.id,
-        "member_name": f"{member.first_name or ''} {member.last_name or ''}".strip() or member.email,
+        "member_name": f"{member.first_name or ''} {member.last_name or ''}".strip()
+        or member.email,
         "basic_completeness_percentage": basic_percentage,
         "total_fields": total_fields,
         "filled_count": filled_count,
@@ -104,11 +122,11 @@ FIELD_COMPLETENESS_TOOL = {
         "properties": {
             "member_id": {
                 "type": "integer",
-                "description": "The ID of the member whose profile to check"
+                "description": "The ID of the member whose profile to check",
             }
         },
-        "required": ["member_id"]
-    }
+        "required": ["member_id"],
+    },
 }
 
 
@@ -121,17 +139,25 @@ SAVE_PROFILE_SUGGESTION_TOOL = {
             "field_name": {
                 "type": "string",
                 "description": "The profile field to suggest a value for. Valid fields: bio, role, location, company, website, skills, interests",
-                "enum": ["bio", "role", "location", "company", "website", "skills", "interests"]
+                "enum": [
+                    "bio",
+                    "role",
+                    "location",
+                    "company",
+                    "website",
+                    "skills",
+                    "interests",
+                ],
             },
             "suggested_value": {
                 "type": "string",
-                "description": "The suggested value for this field. For skills/interests, provide a comma-separated list."
+                "description": "The suggested value for this field. For skills/interests, provide a comma-separated list.",
             },
             "reasoning": {
                 "type": "string",
-                "description": "Brief explanation of why this suggestion was made, based on the conversation."
-            }
+                "description": "Brief explanation of why this suggestion was made, based on the conversation.",
+            },
         },
-        "required": ["field_name", "suggested_value", "reasoning"]
-    }
+        "required": ["field_name", "suggested_value", "reasoning"],
+    },
 }

@@ -14,7 +14,7 @@ async def get_community_profile_analysis(db: AsyncSession) -> dict[str, Any]:
     Returns both aggregated insights AND full member profiles for rich context.
     """
     result = await db.execute(
-        select(Member).where(Member.membership_status.notin_(['cancelled', 'expired']))
+        select(Member).where(Member.membership_status.notin_(["cancelled", "expired"]))
     )
     members = result.scalars().all()
 
@@ -66,18 +66,20 @@ async def get_community_profile_analysis(db: AsyncSession) -> dict[str, Any]:
 
         # Add full profile for this member
         member_name = f"{member.first_name or ''} {member.last_name or ''}".strip()
-        member_profiles.append({
-            "id": member.id,
-            "name": member_name or "Anonymous",
-            "bio": member.bio,
-            "role": member.role,
-            "company": member.company,
-            "location": member.location,
-            "skills": member.skills or [],
-            "interests": member.interests or [],
-            "prompt_responses": member.prompt_responses or {},
-            "all_traits": member.all_traits or [],
-        })
+        member_profiles.append(
+            {
+                "id": member.id,
+                "name": member_name or "Anonymous",
+                "bio": member.bio,
+                "role": member.role,
+                "company": member.company,
+                "location": member.location,
+                "skills": member.skills or [],
+                "interests": member.interests or [],
+                "prompt_responses": member.prompt_responses or {},
+                "all_traits": member.all_traits or [],
+            }
+        )
 
     # Calculate averages
     if bio_lengths:
@@ -85,7 +87,9 @@ async def get_community_profile_analysis(db: AsyncSession) -> dict[str, Any]:
     if skill_counts:
         field_stats["skills"]["avg_count"] = sum(skill_counts) / len(skill_counts)
     if interest_counts:
-        field_stats["interests"]["avg_count"] = sum(interest_counts) / len(interest_counts)
+        field_stats["interests"]["avg_count"] = sum(interest_counts) / len(
+            interest_counts
+        )
 
     # Find common and unique skills/interests
     skill_frequency = Counter(all_skills)
@@ -95,8 +99,10 @@ async def get_community_profile_analysis(db: AsyncSession) -> dict[str, Any]:
         "total_active_members": total_members,
         "field_completion_rates": {
             field: {
-                "rate": round(stats["filled"] / stats["total"] * 100, 1) if stats["total"] > 0 else 0,
-                **stats
+                "rate": round(stats["filled"] / stats["total"] * 100, 1)
+                if stats["total"] > 0
+                else 0,
+                **stats,
             }
             for field, stats in field_stats.items()
         },
@@ -123,56 +129,71 @@ async def get_member_gaps(db: AsyncSession, member_id: int) -> dict[str, Any]:
 
     # Check each field
     if not member.bio or len(member.bio) < 50:
-        gaps.append({
-            "field": "bio",
-            "issue": "Missing or very short bio",
-            "opportunity": "Tell your story - what brings you to White Rabbit?"
-        })
+        gaps.append(
+            {
+                "field": "bio",
+                "issue": "Missing or very short bio",
+                "opportunity": "Tell your story - what brings you to White Rabbit?",
+            }
+        )
 
     if not member.skills:
-        gaps.append({
-            "field": "skills",
-            "issue": "No skills listed",
-            "opportunity": "Help others discover what you can contribute"
-        })
+        gaps.append(
+            {
+                "field": "skills",
+                "issue": "No skills listed",
+                "opportunity": "Help others discover what you can contribute",
+            }
+        )
     elif len(member.skills) < 3:
-        opportunities.append({
-            "field": "skills",
-            "note": "Only a few skills listed",
-            "opportunity": "Are there hidden talents you haven't shared?"
-        })
+        opportunities.append(
+            {
+                "field": "skills",
+                "note": "Only a few skills listed",
+                "opportunity": "Are there hidden talents you haven't shared?",
+            }
+        )
 
     if not member.interests:
-        gaps.append({
-            "field": "interests",
-            "issue": "No interests listed",
-            "opportunity": "What gets you excited? Help us find your people."
-        })
+        gaps.append(
+            {
+                "field": "interests",
+                "issue": "No interests listed",
+                "opportunity": "What gets you excited? Help us find your people.",
+            }
+        )
 
     if not member.role:
-        gaps.append({
-            "field": "role",
-            "issue": "No role/title",
-            "opportunity": "How do you describe what you do?"
-        })
+        gaps.append(
+            {
+                "field": "role",
+                "issue": "No role/title",
+                "opportunity": "How do you describe what you do?",
+            }
+        )
 
     if not member.prompt_responses:
-        opportunities.append({
-            "field": "prompt_responses",
-            "note": "No prompt responses",
-            "opportunity": "These reveal personality - a great way to stand out"
-        })
+        opportunities.append(
+            {
+                "field": "prompt_responses",
+                "note": "No prompt responses",
+                "opportunity": "These reveal personality - a great way to stand out",
+            }
+        )
 
     if not member.location:
-        opportunities.append({
-            "field": "location",
-            "note": "No location listed",
-            "opportunity": "Help local members find you"
-        })
+        opportunities.append(
+            {
+                "field": "location",
+                "note": "No location listed",
+                "opportunity": "Help local members find you",
+            }
+        )
 
     return {
         "member_id": member_id,
-        "member_name": f"{member.first_name or ''} {member.last_name or ''}".strip() or member.email,
+        "member_name": f"{member.first_name or ''} {member.last_name or ''}".strip()
+        or member.email,
         "current_profile": {
             "bio": member.bio[:200] if member.bio else None,
             "role": member.role,
@@ -195,11 +216,7 @@ GET_COMMUNITY_ANALYSIS_TOOL = {
 - FULL PROFILES for every active member including: name, bio, role, company, location, skills, interests, prompt_responses, and all_traits
 
 Use this rich context to generate specific, personalized questions that reference actual themes, skills, and interests present in the community. Avoid generic questions - instead create questions informed by what members have actually shared.""",
-    "input_schema": {
-        "type": "object",
-        "properties": {},
-        "required": []
-    }
+    "input_schema": {"type": "object", "properties": {}, "required": []},
 }
 
 
@@ -211,11 +228,11 @@ GET_MEMBER_GAPS_TOOL = {
         "properties": {
             "member_id": {
                 "type": "integer",
-                "description": "The ID of the member whose profile to analyze"
+                "description": "The ID of the member whose profile to analyze",
             }
         },
-        "required": ["member_id"]
-    }
+        "required": ["member_id"],
+    },
 }
 
 
@@ -225,44 +242,62 @@ SAVE_QUESTION_DECK_TOOL = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "name": {
-                "type": "string",
-                "description": "Name for this question deck"
-            },
+            "name": {"type": "string", "description": "Name for this question deck"},
             "description": {
                 "type": "string",
-                "description": "Description of this deck's purpose and focus"
+                "description": "Description of this deck's purpose and focus",
             },
             "member_id": {
                 "type": "integer",
-                "description": "Optional: If provided, this is a personalized deck for this member. If null/omitted, this is a global deck."
+                "description": "Optional: If provided, this is a personalized deck for this member. If null/omitted, this is a global deck.",
             },
             "questions": {
                 "type": "array",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "question_text": {"type": "string", "description": "The question to ask"},
+                        "question_text": {
+                            "type": "string",
+                            "description": "The question to ask",
+                        },
                         "question_type": {
                             "type": "string",
-                            "enum": ["free_form", "multiple_choice", "yes_no", "fill_in_blank"],
-                            "description": "Type of question: free_form (open text), multiple_choice (select from options), yes_no (binary), fill_in_blank (complete a sentence)"
+                            "enum": [
+                                "free_form",
+                                "multiple_choice",
+                                "yes_no",
+                                "fill_in_blank",
+                            ],
+                            "description": "Type of question: free_form (open text), multiple_choice (select from options), yes_no (binary), fill_in_blank (complete a sentence)",
                         },
                         "options": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Required for multiple_choice: list of 3-5 answer options"
+                            "description": "Required for multiple_choice: list of 3-5 answer options",
                         },
                         "blank_prompt": {
                             "type": "string",
-                            "description": "Required for fill_in_blank: the sentence with ___ where the blank goes (e.g., 'My favorite way to recharge is ___')"
+                            "description": "Required for fill_in_blank: the sentence with ___ where the blank goes (e.g., 'My favorite way to recharge is ___')",
                         },
                         "category": {
                             "type": "string",
-                            "enum": ["origin_story", "creative_spark", "collaboration", "future_vision", "community_connection", "hidden_depths", "impact_legacy"]
+                            "enum": [
+                                "origin_story",
+                                "creative_spark",
+                                "collaboration",
+                                "future_vision",
+                                "community_connection",
+                                "hidden_depths",
+                                "impact_legacy",
+                            ],
                         },
-                        "difficulty_level": {"type": "integer", "minimum": 1, "maximum": 3},
+                        "difficulty_level": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 3,
+                        },
                         "purpose": {"type": "string"},
+<<<<<<< HEAD
                         "follow_up_prompts": {"type": "array", "items": {"type": "string"}},
                         "potential_insights": {"type": "array", "items": {"type": "string"}},
                         "related_profile_fields": {"type": "array", "items": {"type": "string"}},
@@ -271,20 +306,42 @@ SAVE_QUESTION_DECK_TOOL = {
                             "items": {"type": "integer"},
                             "description": "IDs of patterns this question explores or deepens. Use pattern IDs from get_active_patterns."
                         }
+=======
+                        "follow_up_prompts": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "potential_insights": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "related_profile_fields": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+>>>>>>> f61db06 (Add Makefile with validate target, configure ruff, fix all lint issues)
                     },
-                    "required": ["question_text", "question_type", "category", "purpose"]
+                    "required": [
+                        "question_text",
+                        "question_type",
+                        "category",
+                        "purpose",
+                    ],
                 },
-                "description": "The questions to include in this deck"
-            }
+                "description": "The questions to include in this deck",
+            },
         },
-        "required": ["name", "description", "questions"]
-    }
+        "required": ["name", "description", "questions"],
+    },
 }
 
 
 # Pattern discovery tools
 
-async def save_pattern(db: AsyncSession, pattern_data: dict[str, Any]) -> dict[str, Any]:
+
+async def save_pattern(
+    db: AsyncSession, pattern_data: dict[str, Any]
+) -> dict[str, Any]:
     """
     Save or update a discovered pattern.
 
@@ -303,9 +360,7 @@ async def save_pattern(db: AsyncSession, pattern_data: dict[str, Any]) -> dict[s
         return {"error": "Pattern name is required"}
 
     # Check for existing pattern by name
-    result = await db.execute(
-        select(Pattern).where(Pattern.name == name)
-    )
+    result = await db.execute(select(Pattern).where(Pattern.name == name))
     pattern = result.scalar_one_or_none()
 
     # Convert category string to enum if needed
@@ -323,9 +378,13 @@ async def save_pattern(db: AsyncSession, pattern_data: dict[str, Any]) -> dict[s
         pattern.description = pattern_data.get("description", pattern.description)
         pattern.category = category or pattern.category
         pattern.member_count = pattern_data.get("member_count", pattern.member_count)
-        pattern.related_member_ids = pattern_data.get("related_member_ids", pattern.related_member_ids)
+        pattern.related_member_ids = pattern_data.get(
+            "related_member_ids", pattern.related_member_ids
+        )
         pattern.evidence = pattern_data.get("evidence", pattern.evidence)
-        pattern.question_prompts = pattern_data.get("question_prompts", pattern.question_prompts)
+        pattern.question_prompts = pattern_data.get(
+            "question_prompts", pattern.question_prompts
+        )
         pattern.is_active = pattern_data.get("is_active", pattern.is_active)
     else:
         # Create new pattern
@@ -360,7 +419,9 @@ async def get_active_patterns(db: AsyncSession) -> dict[str, Any]:
     evidence, and question prompts that can inform question generation.
     """
     result = await db.execute(
-        select(Pattern).where(Pattern.is_active == True).order_by(Pattern.member_count.desc())
+        select(Pattern)
+        .where(Pattern.is_active == True)
+        .order_by(Pattern.member_count.desc())
     )
     patterns = result.scalars().all()
 
@@ -400,11 +461,7 @@ Use these patterns to:
 2. Create questions that could surface additional members who fit patterns
 3. Design questions that deepen understanding of why these patterns exist
 4. Craft questions that facilitate connections between pattern-related members""",
-    "input_schema": {
-        "type": "object",
-        "properties": {},
-        "required": []
-    }
+    "input_schema": {"type": "object", "properties": {}, "required": []},
 }
 
 
@@ -416,36 +473,48 @@ SAVE_PATTERN_TOOL = {
         "properties": {
             "name": {
                 "type": "string",
-                "description": "Short, unique pattern name (e.g., 'Tech + Arts Fusion')"
+                "description": "Short, unique pattern name (e.g., 'Tech + Arts Fusion')",
             },
             "description": {
                 "type": "string",
-                "description": "Detailed description of what this pattern reveals about the community"
+                "description": "Detailed description of what this pattern reveals about the community",
             },
             "category": {
                 "type": "string",
-                "enum": ["skill_cluster", "interest_theme", "collaboration_opportunity", "community_strength", "cross_domain"],
-                "description": "Category of pattern"
+                "enum": [
+                    "skill_cluster",
+                    "interest_theme",
+                    "collaboration_opportunity",
+                    "community_strength",
+                    "cross_domain",
+                ],
+                "description": "Category of pattern",
             },
             "member_count": {
                 "type": "integer",
-                "description": "Number of members who exhibit this pattern"
+                "description": "Number of members who exhibit this pattern",
             },
             "related_member_ids": {
                 "type": "array",
                 "items": {"type": "integer"},
-                "description": "REQUIRED: The numeric 'id' values from member_profiles for members who exhibit this pattern. Example: [1, 5, 12, 23]"
+                "description": "REQUIRED: The numeric 'id' values from member_profiles for members who exhibit this pattern. Example: [1, 5, 12, 23]",
             },
             "evidence": {
                 "type": "object",
-                "description": "Supporting data (e.g., skill names, frequencies, examples)"
+                "description": "Supporting data (e.g., skill names, frequencies, examples)",
             },
             "question_prompts": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "2-3 questions that could explore this pattern further"
-            }
+                "description": "2-3 questions that could explore this pattern further",
+            },
         },
-        "required": ["name", "description", "category", "member_count", "related_member_ids"]
-    }
+        "required": [
+            "name",
+            "description",
+            "category",
+            "member_count",
+            "related_member_ids",
+        ],
+    },
 }
